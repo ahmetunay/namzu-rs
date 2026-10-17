@@ -152,6 +152,21 @@ symlink ve .git/target/node_modules atlanır. Patch atomik dosya değişimi kull
 tam bir old_text eşleşmesi ister ve dosya modunu korur. Harici editörlere karşı
 transaction/CAS garantisi yoktur.
 
+## 0.5 — deterministik benchmark
+
+```sh
+namzu-rs bench demo --out artifacts/bench
+namzu-rs bench init --model ORTAK_MODEL_ID --jcode /kurulu/jcode --file artifacts/live-suite.json
+namzu-rs bench validate artifacts/live-suite.json
+namzu-rs bench run artifacts/live-suite.json --out artifacts/bench
+```
+
+Native Rust koşucu aynı girdi/modelle ajanları sırayla, en fazla 300 saniyede
+çalıştırır. Bağımsız dosya/test oraklları, JSON raporları ve wait4 max-RSS ölçümü
+vardır. Offline demo model testi değildir: doğru fixture 3/3, no-op 0/3 almalıdır.
+Canlı karşılaştırma için iki ajanın hesap/model erişimi ayrıca doğrulanır.
+Tam sözleşme ve RAM/izin karşılaştırmasının sınırları [bench/README.md](bench/README.md).
+
 ## Yerel checkpoint ve kurtarma
 
 ```sh

@@ -24,22 +24,77 @@ pub struct ProcessOutput {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    pub peak_rss_kib: Option<u64>,
 }
 
-struct OwnedChild(Child);
+struct OwnedChild {
+    child: Child,
+    reaped: bool,
+    group_killed: bool,
+    peak_rss_kib: Option<u64>,
+}
 impl OwnedChild {
-    fn kill_group(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(-(self.0.id() as i32), libc::SIGKILL);
+    fn new(child: Child) -> Self {
+        Self {
+            child,
+            reaped: false,
+            group_killed: false,
+            peak_rss_kib: None,
         }
-        let _ = self.0.kill();
+    }
+    fn kill_group(&mut self) {
+        if !self.group_killed {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(self.child.id() as i32), libc::SIGKILL);
+            }
+            if !self.reaped {
+                let _ = self.child.kill();
+            }
+            self.group_killed = true;
+        }
+    }
+    #[cfg(unix)]
+    fn wait(&mut self, blocking: bool) -> io::Result<Option<std::process::ExitStatus>> {
+        use std::os::unix::process::ExitStatusExt;
+        if self.reaped {
+            return Ok(None);
+        }
+        loop {
+            let mut status = 0;
+            let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+            let result = unsafe {
+                libc::wait4(
+                    self.child.id() as i32,
+                    &mut status,
+                    if blocking { 0 } else { libc::WNOHANG },
+                    &mut usage,
+                )
+            };
+            if result < 0 {
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(error);
+            }
+            if result == 0 {
+                return Ok(None);
+            }
+            self.reaped = true;
+            let rss = usage.ru_maxrss.max(0) as u64;
+            #[cfg(target_os = "macos")]
+            let rss = rss / 1024;
+            self.peak_rss_kib = Some(rss);
+            return Ok(Some(std::process::ExitStatus::from_raw(status)));
+        }
     }
 }
 impl Drop for OwnedChild {
     fn drop(&mut self) {
         self.kill_group();
-        let _ = self.0.wait();
+        #[cfg(unix)]
+        let _ = self.wait(true);
     }
 }
 
@@ -104,18 +159,18 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0);
-        let mut child = OwnedChild(
+        let mut child = OwnedChild::new(
             command
                 .spawn()
                 .map_err(|_| AgentError::Provider("cannot launch process".into()))?,
         );
         let mut out = child
-            .0
+            .child
             .stdout
             .take()
             .ok_or(AgentError::Protocol("missing process stdout"))?;
         let mut err = child
-            .0
+            .child
             .stderr
             .take()
             .ok_or(AgentError::Protocol("missing process stderr"))?;
@@ -136,15 +191,14 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
                 Some(("timeout", None))
             } else {
                 child
-                    .0
-                    .try_wait()
+                    .wait(false)
                     .map_err(|_| AgentError::Provider("cannot wait for process".into()))?
                     .map(|status| ("exited", status.code()))
             };
             if let Some((status, exit_code)) = outcome {
                 // Kill inherited-pipe/background descendants even when leader exited.
                 child.kill_group();
-                let _ = child.0.wait();
+                let _ = child.wait(true);
                 let more = drain(&mut out, &mut stdout, &mut left)
                     .and_then(|a| drain(&mut err, &mut stderr, &mut left).map(|b| a || b))
                     .unwrap_or(false);
@@ -155,6 +209,7 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
                         status.into()
                     },
                     exit_code,
+                    peak_rss_kib: child.peak_rss_kib,
                     stdout: String::from_utf8_lossy(&stdout).into_owned(),
                     stderr: String::from_utf8_lossy(&stderr).into_owned(),
                 });

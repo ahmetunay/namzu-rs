@@ -15,7 +15,9 @@ bu yeni depoda tamamlanmış uygulama anlamına gelmez.
 
 İlk sürüm OpenAI uyumlu Chat Completions adaptörü içerir. Yerel HTTP fixture
 ile CLI → sağlayıcı → dosya aracı → sağlayıcı sonucu zinciri sınandı.
-Codex abonelik girişi ve eski benchmark script uyumu henüz yoktur.
+Codex abonelik sürücüsü ve yeni benchmark koşucusu aşağıdaki 0.4/0.5'te eklendi.
+Canlı hesap onayı bekleniyor. Kayıp eski benchmark script'leriyle birebir uyum
+iddiası yoktur; yeni sürümlü sözleşme bench/README.md'dedir.
 
 ## Doğrulanan ilk aşama — 2026-10-17
 
@@ -77,7 +79,7 @@ sağlayıcılar ilk TUI/Pals/MCP sürümlerini bekletmez.
 | 0.2 | Terminal araçları ve izin politikası | Tamamlandı: shell, literal arama, patch/diff; izin/çıktı sınırları, süreç grubu temizliği; 45 test geçti |
 | 0.3 | Config ve kalıcı oturumlar | Tamamlandı: özel/atomik kayıt, süreç lock'u, geçmiş/resume, açık config seçimi; belirsiz etki otomatik tekrarlanmaz; toplam 55 test |
 | 0.4 | Codex/OpenAI abonelik bağlantısı | Native sürücü uygulandı: device login, özel token/refresh/logout, gerçek model keşfi, SSE/reasoning replay; toplam 68 test. Canlı giriş kullanıcı cihaz onayı bekliyor |
-| 0.5 | Benchmark uyumu ve ilk karşılaştırma | CLI sözleşmesi, deterministik görevler, ortak model/izin/bütçe; sırayla, görev başına 300 saniye |
+| 0.5 | Benchmark uyumu ve ilk karşılaştırma | Native koşucu ve 3 görev hazır; seri/300 saniye/bağımsız orakllar/RSS/hash/JSON; toplam 78 test. İlk canlı ortak-model karşılaştırması cihaz onayı bekliyor |
 
 0.2 tamamlandı; shell açık host yürütme iznidir, OS sandbox'ı değildir. 0.4, mevcut API-key
 Chat Completions adaptöründen ayrı abonelik sürücüsüdür. Eski benchmark dosyaları
@@ -185,8 +187,11 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki teslim: 0.5 — deterministik benchmark.**
-0.4'ün canlı hesabı, istenen cihaz kodu onayından sonra ayrıca doğrulanacak.
+**Sıradaki iş: cihaz kodu onayı → gerçek model kataloğu → ortak modelle ilk canlı benchmark.**
+0.2 ve 0.3 tamamlandı; 0.4 ve 0.5'in uygulamaları ve yerel fixture kabulü hazır.
+Canlı abonelik/model/kota ve Namzu–Jcode skorları henüz doğrulanmadı. Normal
+testlerde harici model çağrısı yapılmadı. Bu insan etkileşimi tamamlanmadan ortak
+temelin canlı kabulünü veya TUI aşamasına geçişi tamamlandı sayma.
 Kullanıcı 0.2–0.5'in sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

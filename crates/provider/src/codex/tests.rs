@@ -408,3 +408,25 @@ fn model_catalogue_uses_authenticated_route_and_filters_hidden_models() {
     assert_eq!(models["models"].as_array().unwrap().len(), 1);
     assert_eq!(models["models"][0]["id"], "fixture-luna");
 }
+
+#[test]
+fn explicit_jcode_link_copies_only_access_and_never_overwrites_a_store() {
+    let source = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    auth::save_fixture(
+        source.path(),
+        &auth::fixture_credential("account", 4102444800),
+    );
+    auth::link_jcode(source.path(), target.path(), &context()).unwrap();
+    let store = namzu_session::PrivateStore::open(target.path()).unwrap();
+    let value: Value = store.read("openai-auth.json").unwrap().unwrap();
+    assert_eq!(value["openai_accounts"][0]["account_id"], "account");
+    assert_eq!(value["openai_accounts"][0]["refresh_token"], "");
+    assert!(auth::link_jcode(source.path(), target.path(), &context()).is_err());
+    let original: Value = namzu_session::PrivateStore::open(source.path())
+        .unwrap()
+        .read("codex-credentials.json")
+        .unwrap()
+        .unwrap();
+    assert_eq!(original["refresh_token"], "fixture-refresh");
+}

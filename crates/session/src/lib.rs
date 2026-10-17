@@ -138,6 +138,17 @@ impl PrivateStore {
             .map_err(|_| AgentError::State("invalid state JSON"))
     }
     pub fn write<T: Serialize>(&self, name: &str, value: &T) -> Result<(), AgentError> {
+        self.write_inner(name, value, true)
+    }
+    pub fn write_new<T: Serialize>(&self, name: &str, value: &T) -> Result<(), AgentError> {
+        self.write_inner(name, value, false)
+    }
+    fn write_inner<T: Serialize>(
+        &self,
+        name: &str,
+        value: &T,
+        replace: bool,
+    ) -> Result<(), AgentError> {
         if !name_valid(name) {
             return Err(AgentError::State("invalid state name"));
         }
@@ -161,9 +172,20 @@ impl PrivateStore {
             file.write_all(&bytes)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| AgentError::State("cannot sync state"))?;
-            self.dir
-                .rename(&temporary, &self.dir, name)
-                .map_err(|_| AgentError::State("cannot publish state"))?;
+            if replace {
+                self.dir
+                    .rename(&temporary, &self.dir, name)
+                    .map_err(|_| AgentError::State("cannot publish state"))?;
+            } else {
+                self.dir
+                    .hard_link(&temporary, &self.dir, name)
+                    .map_err(|_| {
+                        AgentError::State("state destination already exists or cannot be published")
+                    })?;
+                self.dir
+                    .remove_file(&temporary)
+                    .map_err(|_| AgentError::State("cannot retire temporary state link"))?;
+            }
             self.dir
                 .open(".")
                 .map_err(|_| AgentError::State("cannot open directory for sync"))?

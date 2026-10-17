@@ -34,6 +34,21 @@ fn private_atomic_roundtrip_and_lock_contention() {
 }
 
 #[test]
+fn no_replace_publication_preserves_existing_content() {
+    let root = tempfile::tempdir().unwrap();
+    let store = PrivateStore::open(root.path()).unwrap();
+    store.write_new("once.json", &json!({"version":1})).unwrap();
+    assert!(store.write_new("once.json", &json!({"version":2})).is_err());
+    assert_eq!(
+        store
+            .read::<serde_json::Value>("once.json")
+            .unwrap()
+            .unwrap()["version"],
+        1
+    );
+}
+
+#[test]
 fn traversal_and_corrupt_state_are_rejected() {
     let root = tempfile::tempdir().unwrap();
     let store = PrivateStore::open(root.path()).unwrap();

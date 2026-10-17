@@ -117,6 +117,16 @@ pub fn logout(path: &Path) -> Result<(), AgentError> {
     store.remove(FILE)
 }
 
+/// Explicit one-time access-token copy to a NEW private Jcode profile.
+/// The refresh grant stays with Namzu, preventing cross-client rotation races.
+pub fn link_jcode(path: &Path, directory: &Path, context: &TurnContext) -> Result<(), AgentError> {
+    let credential = ensure_fresh(path, &Endpoints::production(), &client()?, context)?;
+    let target = PrivateStore::open(directory)?;
+    let _lock = target.lock("namzu-jcode-link")?;
+    context.remaining()?;
+    target.write_new("openai-auth.json",&json!({"openai_accounts":[{"label":"openai-otter","access_token":credential.access_token,"refresh_token":"","account_id":credential.account_id,"expires_at":credential.expires_ms}],"active_openai_account":"openai-otter"}))
+}
+
 pub(super) fn ensure_fresh(
     path: &Path,
     endpoints: &Endpoints,

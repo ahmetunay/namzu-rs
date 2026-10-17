@@ -1,3 +1,4 @@
+mod benchmark;
 mod config;
 mod execute;
 use clap::{Parser, Subcommand};
@@ -48,6 +49,19 @@ enum Command {
         #[arg(long)]
         state_dir: Option<PathBuf>,
     },
+    /// Deterministic benchmark harness.
+    Bench {
+        #[command(subcommand)]
+        action: benchmark::BenchAction,
+    },
+    #[command(hide = true)]
+    FixtureTask {
+        task: String,
+        #[arg(long)]
+        cwd: PathBuf,
+        #[arg(long)]
+        broken: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -69,6 +83,11 @@ enum AuthAction {
     },
     Status,
     Logout,
+    /// Copy only the current access token to a NEW private Jcode profile.
+    LinkJcode {
+        #[arg(long)]
+        directory: PathBuf,
+    },
 }
 fn auth_command(
     state_dir: Option<PathBuf>,
@@ -88,6 +107,14 @@ fn auth_command(
             println!("{}", json!({"authenticated":true}));
         }
         AuthAction::Status => println!("{}", namzu_provider::codex::auth::status(&path)?),
+        AuthAction::LinkJcode { directory } => {
+            namzu_provider::codex::auth::link_jcode(
+                &path,
+                &directory,
+                &namzu_core::TurnContext::new(std::time::Duration::from_secs(30), cancellation)?,
+            )?;
+            println!("{}", json!({"linked":true,"refresh_grant_copied":false}));
+        }
         AuthAction::Logout => {
             namzu_provider::codex::auth::logout(&path)?;
             println!("{}", json!({"authenticated":false}));
@@ -197,6 +224,27 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Bench { action } => {
+            return match benchmark::run(action, cancellation) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Command::FixtureTask { task, cwd, broken } => {
+            return match benchmark::fixture(&task, &cwd, broken, cancellation) {
+                Ok(value) => {
+                    println!("{value}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Auth { state_dir, action } => {
             return match auth_command(state_dir, action, cancellation) {
                 Ok(()) => ExitCode::SUCCESS,

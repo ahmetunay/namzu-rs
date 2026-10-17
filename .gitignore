@@ -9,5 +9,6 @@ __pycache__/
 *.pyc
 /.namzu-state/
 **/codex-credentials.json
+**/openai-auth.json
 /s-*.json
 *.lock.tmp
