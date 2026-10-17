@@ -180,7 +180,11 @@ impl PrivateStore {
             return Err(AgentError::State("invalid state name"));
         }
         match self.dir.remove_file(name) {
-            Ok(()) => Ok(()),
+            Ok(()) => self
+                .dir
+                .open(".")
+                .and_then(|directory| directory.sync_all())
+                .map_err(|_| AgentError::State("cannot sync state removal")),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(_) => Err(AgentError::State("cannot remove state file")),
         }

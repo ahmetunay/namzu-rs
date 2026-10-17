@@ -4,7 +4,10 @@ use namzu_core::{AgentError, Cancellation, Limits, Message, Turn, run_history};
 use namzu_provider::OpenAiCompatible;
 use namzu_session::{Journal, PrivateStore, Session, SessionStatus, default_state_dir, new_id};
 use namzu_tools::{TerminalTools, ToolPolicy};
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 #[derive(Args)]
 pub struct ExecArgs {
@@ -19,6 +22,8 @@ pub struct ExecArgs {
     pub base_url: Option<String>,
     #[arg(long)]
     pub api_key_env: Option<String>,
+    #[arg(long)]
+    pub effort: Option<String>,
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..=86400))]
     pub timeout: Option<u64>,
     #[arg(long)]
@@ -51,9 +56,12 @@ pub struct Execution {
     pub result: Result<Turn, AgentError>,
 }
 pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
+    let started = Instant::now();
     let mut session_id = None;
     let result = (|| {
-        let store = PrivateStore::open(args.state_dir.unwrap_or(default_state_dir()?))?;
+        let state_dir = args.state_dir.clone().unwrap_or(default_state_dir()?);
+        let explicit_base_url = args.base_url.is_some();
+        let store = PrivateStore::open(&state_dir)?;
         let mut config = Config::load(&store, args.config.as_deref())?;
         if let Some(value) = args.model {
             config.model = Some(value);
@@ -80,19 +88,48 @@ pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
         let model = config.model.clone().ok_or(AgentError::Configuration(
             "model required via --model or selected config",
         ))?;
-        if config.provider != "openai-compatible" {
-            return Err(AgentError::Configuration("Codex driver not installed yet"));
-        }
-        let key = std::env::var(&config.api_key_env).map_err(|_| {
-            AgentError::Configuration("API key environment variable is missing or invalid")
-        })?;
-        let mut provider = OpenAiCompatible::new(&config.base_url, model.clone(), &key)?;
+        let mut provider = if config.provider == "codex" {
+            if explicit_base_url {
+                return Err(AgentError::Configuration(
+                    "Codex uses a fixed subscription endpoint; --base-url is for API-key providers",
+                ));
+            }
+            Driver::Codex(Box::new(namzu_provider::codex::CodexProvider::new(
+                state_dir,
+                model.clone(),
+                args.effort,
+            )?))
+        } else {
+            if args.effort.is_some() {
+                return Err(AgentError::Configuration(
+                    "--effort currently applies to Codex only",
+                ));
+            }
+            let key = std::env::var(&config.api_key_env).map_err(|_| {
+                AgentError::Configuration("API key environment variable is missing or invalid")
+            })?;
+            Driver::Api(Box::new(OpenAiCompatible::new(
+                &config.base_url,
+                model.clone(),
+                &key,
+            )?))
+        };
         let cwd = args
             .cwd
             .canonicalize()
             .map_err(|_| AgentError::Configuration("cannot open workspace"))?;
-        let route = serde_json::to_string(&(&config.provider, &config.base_url, &model))
-            .map_err(|_| AgentError::Configuration("cannot encode provider route"))?;
+        let route = if let Driver::Codex(driver) = &provider {
+            driver.route_identity(&namzu_core::TurnContext::new(
+                Duration::from_secs(config.timeout)
+                    .checked_sub(started.elapsed())
+                    .ok_or(AgentError::Timeout)?
+                    .min(Duration::from_secs(30)),
+                cancellation.clone(),
+            )?)?
+        } else {
+            serde_json::to_string(&(&config.provider, &config.base_url, &model))
+                .map_err(|_| AgentError::Configuration("cannot encode provider route"))?
+        };
         let id = args.resume.clone().unwrap_or_else(new_id);
         let _lock = store.lock(&id)?;
         let mut session = if args.resume.is_some() {
@@ -131,7 +168,10 @@ pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
             &mut tools,
             messages,
             Limits {
-                timeout: Duration::from_secs(config.timeout),
+                timeout: Duration::from_secs(config.timeout)
+                    .checked_sub(started.elapsed())
+                    .filter(|value| !value.is_zero())
+                    .ok_or(AgentError::Timeout)?,
                 max_steps: config.max_steps,
                 max_tool_calls: config.max_tool_calls,
                 ..Limits::default()
@@ -151,4 +191,28 @@ pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
         turn
     })();
     Execution { session_id, result }
+}
+
+enum Driver {
+    Api(Box<OpenAiCompatible>),
+    Codex(Box<namzu_provider::codex::CodexProvider>),
+}
+impl namzu_core::Provider for Driver {
+    fn take_state(&mut self) -> Option<serde_json::Value> {
+        match self {
+            Self::Api(driver) => driver.take_state(),
+            Self::Codex(driver) => driver.take_state(),
+        }
+    }
+    fn complete(
+        &mut self,
+        messages: &[Message],
+        tools: &[namzu_core::ToolDefinition],
+        context: &namzu_core::TurnContext,
+    ) -> Result<namzu_core::Completion, AgentError> {
+        match self {
+            Self::Api(driver) => driver.complete(messages, tools, context),
+            Self::Codex(driver) => driver.complete(messages, tools, context),
+        }
+    }
 }

@@ -76,7 +76,7 @@ sağlayıcılar ilk TUI/Pals/MCP sürümlerini bekletmez.
 | 0.1 | Workspace, SDK, ajan döngüsü | İlk sürüm tamam: scripted ve yerel HTTP akışında araç sonucu aktarımı |
 | 0.2 | Terminal araçları ve izin politikası | Tamamlandı: shell, literal arama, patch/diff; izin/çıktı sınırları, süreç grubu temizliği; 45 test geçti |
 | 0.3 | Config ve kalıcı oturumlar | Tamamlandı: özel/atomik kayıt, süreç lock'u, geçmiş/resume, açık config seçimi; belirsiz etki otomatik tekrarlanmaz; toplam 55 test |
-| 0.4 | Codex/OpenAI abonelik bağlantısı | Desteklenen giriş, güvenli token saklama/refresh, model seçimi; etkileşimli login açık kullanıcı eylemiyle |
+| 0.4 | Codex/OpenAI abonelik bağlantısı | Native sürücü uygulandı: device login, özel token/refresh/logout, gerçek model keşfi, SSE/reasoning replay; toplam 68 test. Canlı giriş kullanıcı cihaz onayı bekliyor |
 | 0.5 | Benchmark uyumu ve ilk karşılaştırma | CLI sözleşmesi, deterministik görevler, ortak model/izin/bütçe; sırayla, görev başına 300 saniye |
 
 0.2 tamamlandı; shell açık host yürütme iznidir, OS sandbox'ı değildir. 0.4, mevcut API-key
@@ -185,7 +185,8 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki teslim: 0.4 — Codex abonelik sürücüsü ve giriş.**
+**Sıradaki teslim: 0.5 — deterministik benchmark.**
+0.4'ün canlı hesabı, istenen cihaz kodu onayından sonra ayrıca doğrulanacak.
 Kullanıcı 0.2–0.5'in sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

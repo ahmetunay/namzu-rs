@@ -825,9 +825,13 @@ dependencies = [
 name = "namzu-provider"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "namzu-core",
+ "namzu-session",
  "reqwest",
+ "serde",
  "serde_json",
+ "tempfile",
  "url",
 ]
 

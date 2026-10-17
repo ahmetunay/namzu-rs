@@ -20,6 +20,10 @@ pub struct ToolCall {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "snake_case")]
 pub enum Message {
+    /// Opaque provider replay data, never promoted to system/user instructions.
+    ProviderState {
+        data: Value,
+    },
     System {
         content: String,
     },
@@ -132,6 +136,9 @@ impl TurnContext {
 }
 
 pub trait Provider {
+    fn take_state(&mut self) -> Option<Value> {
+        None
+    }
     fn complete(
         &mut self,
         messages: &[Message],
@@ -296,6 +303,10 @@ pub fn run_history(
             return Err(AgentError::Configuration("duplicate tool definitions"));
         }
         let response = provider.complete(&messages, &definitions, &context)?;
+        if let Some(data) = provider.take_state() {
+            account(data.to_string().len())?;
+            messages.push(Message::ProviderState { data });
+        }
         stats.provider_calls += 1;
         context.remaining()?;
         account(response.text.len())?;

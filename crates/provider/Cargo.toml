@@ -10,3 +10,9 @@ namzu-core.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 url = "2"
+serde.workspace = true
+namzu-session.workspace = true
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile.workspace = true

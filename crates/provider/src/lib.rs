@@ -1,5 +1,6 @@
 //! Explicit OpenAI-compatible Chat Completions adapter. No automatic login,
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
+pub mod codex;
 use namzu_core::{
     AgentError, Completion, Message, Provider, ToolCall, ToolDefinition, TurnContext,
 };
@@ -67,7 +68,8 @@ impl OpenAiCompatible {
 }
 
 pub fn encode_messages(messages: &[Message]) -> Vec<Value> {
-    messages.iter().map(|message| match message {
+    messages.iter().filter(|message| !matches!(message,Message::ProviderState {..})).map(|message| match message {
+        Message::ProviderState {..}=>unreachable!(),
         Message::System { content } => json!({"role":"system", "content":content}),
         Message::User { content } => json!({"role":"user", "content":content}),
         Message::Assistant { content, tool_calls } => {

@@ -36,6 +36,18 @@ enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Native Codex subscription device login and private credential management.
+    Auth {
+        #[arg(long)]
+        state_dir: Option<PathBuf>,
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+    /// Discover the signed-in Codex subscription's actual model catalogue.
+    Models {
+        #[arg(long)]
+        state_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -47,6 +59,41 @@ enum SessionAction {
 enum ConfigAction {
     Init,
     Show,
+}
+
+#[derive(Subcommand)]
+enum AuthAction {
+    Login {
+        #[arg(long,default_value_t=900,value_parser=clap::value_parser!(u64).range(1..=900))]
+        timeout: u64,
+    },
+    Status,
+    Logout,
+}
+fn auth_command(
+    state_dir: Option<PathBuf>,
+    action: AuthAction,
+    cancellation: Cancellation,
+) -> Result<(), namzu_core::AgentError> {
+    let path = state_dir.unwrap_or(namzu_session::default_state_dir()?);
+    match action {
+        AuthAction::Login { timeout } => {
+            let context = namzu_core::TurnContext::new(
+                std::time::Duration::from_secs(timeout),
+                cancellation,
+            )?;
+            namzu_provider::codex::auth::login_device(&path, &context, |url, code| {
+                eprintln!("Open {url} and enter code: {code}")
+            })?;
+            println!("{}", json!({"authenticated":true}));
+        }
+        AuthAction::Status => println!("{}", namzu_provider::codex::auth::status(&path)?),
+        AuthAction::Logout => {
+            namzu_provider::codex::auth::logout(&path)?;
+            println!("{}", json!({"authenticated":false}));
+        }
+    }
+    Ok(())
 }
 
 fn state_command(
@@ -150,6 +197,37 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Auth { state_dir, action } => {
+            return match auth_command(state_dir, action, cancellation) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Command::Models { state_dir } => {
+            let result = (|| {
+                let driver = namzu_provider::codex::CodexProvider::new(
+                    state_dir.unwrap_or(namzu_session::default_state_dir()?),
+                    "catalogue".into(),
+                    None,
+                )?;
+                let models = driver.models(&namzu_core::TurnContext::new(
+                    std::time::Duration::from_secs(30),
+                    cancellation,
+                )?)?;
+                println!("{models}");
+                Ok::<_, namzu_core::AgentError>(())
+            })();
+            return match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Demo { json } => (json, true, None, offline_demo(cancellation)),
         Command::Exec(args) => {
             let json = args.json;

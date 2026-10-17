@@ -49,7 +49,7 @@ dosyalara ve ağa da erişim sağlar, OS sandbox'ı değildir. `--tool-allow` ar
 listesini daraltır; `--tool-deny` her zaman önceliklidir. Shell'in env'i
 temizlenir; yalnızca PATH/locale ve proxy/CA değişkenleri aktarılır. Anahtar komut
 satırında alınmaz, kaydedilmez ve hata çıktısına eklenmez. Bu adaptör Chat
-Completions API içindir; ChatGPT/Codex abonelik girişi henüz uygulanmadı.
+Completions API içindir; Codex aboneliği için aşağıdaki ayrı native sürücüyü kullan.
 Önceki oturumdan kimlik bilgileri taşınmadı. Yeni bir anahtar paylaşman gerekmez.
 
 SDK giriş noktası `namzu_core::run_turn`; sağlayıcılar `Provider`, araç kümeleri
@@ -106,6 +106,42 @@ hatası etkiyi engeller. Çökme/iptal/hata sonrası session running/failed kal�
 otomatik resume reddedilir: `session show` ile etkileri inceleyip yeni session
 açılmalıdır. Bu ilk sürüm yarım kalan turn için otomatik kurtarma/rollback vaat
 etmez. Özel session/config dosyaları GitHub yedeğine dâhil değildir.
+
+## 0.4 — native Codex abonelik sürücüsü
+
+```sh
+namzu-rs auth login
+namzu-rs auth status
+namzu-rs models
+namzu-rs exec 'Görev' --provider codex --model MODEL_LISTESINDEKI_ID \
+  --effort low --allow-write --allow-shell --timeout 300 --json
+namzu-rs auth logout
+```
+
+Login yalnızca açık `auth login` komutuyla başlar; cihaz kodunu ekranda verilen
+resmî sayfaya girersin. Normal exec/models otomatik tarayıcı/login açmaz. Native
+Rust HTTP sürücüsü kullanılır; Codex CLI/Node alt süreci veya API-key fallback yok.
+Codex endpoint'leri sabittir; `--base-url` abonelik tokenını başka yere gönderemez.
+
+Tokenlar özel state dizinindeki codex-credentials.json'da 0600 saklanır;
+GitHub'a yüklenmez. Login/refresh/logout aynı süreçler arası kilidi kullanır.
+Son 60 saniyeye giren token yenilenir; dönen hesap kimliği değişirse reddedilir.
+Refresh token döndürülürse atomik olarak kaydedilir. Yenileme sonrası kalıcı disk
+hatası gibi kurtarılamayan durumlar açık hata verir; yeniden login gerekebilir.
+JWT payload'ı yalnızca hesap/expiry metadata'sı içindir; imza doğrulaması iddiası
+yoktur, gerçek token kabulü HTTPS servisinindir. Status tokenları göstermez.
+
+Responses/SSE tamamlanmadan araçlar çalıştırılmaz. Kesik/incomplete/refused
+yanıtlar başarısızdır. Yerel SSE sınırları: 1 MiB olay/satır, 16 MiB akış,
+4096 output item. Opaque reasoning ve native tool item'ları özel session'a
+kaydedilip yalnızca aynı hesap/model/endpoint ve değişmemiş mesajla yeniden
+gönderilir. Başka sağlayıcının isteklerine eklenmez. TUI'ye canlı token akışı
+henüz yok; bu sürüm SSE'yi tamamlanana kadar tüketir.
+
+Model adları `models` yanıtından seçilir; “Luna” diye sabit/tahmini bir ID yoktur.
+Yerel fixture testleri login/poll/exchange, refresh, logout, model listesi,
+SSE/araç döngüsü ve reasoning replay'i doğrular. Bunlar canlı abonelik erişimi
+veya kota garantisi değildir; mevcut hesap doğrulaması ayrı yapılır.
 
 0.2: Shell en fazla 300 saniye (varsayılan 60 ve turn kalan süresiyle sınırlı),
 64 KiB birleşik çıktı; süreç grubu iptal/hata/çıktı sınırı ve normal lider
