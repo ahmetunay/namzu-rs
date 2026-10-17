@@ -109,6 +109,13 @@ etmez. Özel session/config dosyaları GitHub yedeğine dâhil değildir.
 
 ## 0.4 — native Codex abonelik sürücüsü
 
+Önkoşul: OpenAI'nin [resmî giriş belgesine](https://developers.openai.com/codex/auth)
+göre cihaz koduyla giriş, kişisel hesabın ChatGPT güvenlik ayarlarında etkin
+olmalıdır. Yönetilen çalışma alanında bu izin workspace yöneticisine bağlıdır.
+Kod reddedilirse önce bu izni ve tarayıcıda doğru ChatGPT hesabında olduğunu
+kontrol et; süre dolmadan aynı kodu kullanabilirsin. Kod reddi tek başına bu
+ayarın kapalı olduğunu kanıtlamaz. Kodlar 15 dakika içinde tamamlanmalıdır.
+
 ```sh
 namzu-rs auth login
 namzu-rs auth status
