@@ -74,12 +74,12 @@ sağlayıcılar ilk TUI/Pals/MCP sürümlerini bekletmez.
 | Parça | İş | Durum ve kabul ölçütü |
 | --- | --- | --- |
 | 0.1 | Workspace, SDK, ajan döngüsü | İlk sürüm tamam: scripted ve yerel HTTP akışında araç sonucu aktarımı |
-| 0.2 | Terminal araçları ve izin politikası | Sıradaki öneri: shell, arama, patch/diff; cwd/izin/çıktı sınırları ve süreç ağacı temizliği |
+| 0.2 | Terminal araçları ve izin politikası | Tamamlandı: shell, literal arama, patch/diff; izin/çıktı sınırları, süreç grubu temizliği; 45 test geçti |
 | 0.3 | Config ve kalıcı oturumlar | Atomik session kayıtları, resume, geçmiş, proje ayarları; belirsiz etkiyi otomatik tekrarlamama |
 | 0.4 | Codex/OpenAI abonelik bağlantısı | Desteklenen giriş, güvenli token saklama/refresh, model seçimi; etkileşimli login açık kullanıcı eylemiyle |
 | 0.5 | Benchmark uyumu ve ilk karşılaştırma | CLI sözleşmesi, deterministik görevler, ortak model/izin/bütçe; sırayla, görev başına 300 saniye |
 
-0.2'nin dosya okuma/yazma kısmı var; shell/search/patch yok. 0.4, mevcut API-key
+0.2 tamamlandı; shell açık host yürütme iznidir, OS sandbox'ı değildir. 0.4, mevcut API-key
 Chat Completions adaptöründen ayrı abonelik sürücüsüdür. Eski benchmark dosyaları
 geri gelirse sözleşmesi incelenir; gelmezse yeni sözleşme açıkça belgelenir.
 
@@ -185,8 +185,8 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki önerilen teslim: 0.2 — terminal araçları ve izin politikası.**
-Bu tur planlama/yedekleme turudur; 0.2 uygulaması henüz başlamadı.
+**Sıradaki teslim: 0.3 — yapılandırma ve kalıcı oturumlar.**
+Kullanıcı 0.2–0.5'in sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi
 

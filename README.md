@@ -42,7 +42,12 @@ Gerçek model için API anahtarını kendin seçtiğin ortam değişkenine koy:
 ```
 
 `--allow-write` verilirse çalışma klasöründeki dosyalara yazabilir. Varsayılan
-araçlar yalnızca `read_file` ve `list_files`; shell henüz yok. Anahtar komut
+araçlar `read_file`, `list_files`, `search_files` ve `diff_file`.
+`--allow-write` ayrıca `write_file` ve tek eşleşmeli `apply_patch` açar.
+`--allow-shell` host `/bin/sh` çalıştırır: bu izin çalışma klasörü dışındaki
+dosyalara ve ağa da erişim sağlar, OS sandbox'ı değildir. `--tool-allow` araç
+listesini daraltır; `--tool-deny` her zaman önceliklidir. Shell'in env'i
+temizlenir; yalnızca PATH/locale ve proxy/CA değişkenleri aktarılır. Anahtar komut
 satırında alınmaz, kaydedilmez ve hata çıktısına eklenmez. Bu adaptör Chat
 Completions API içindir; ChatGPT/Codex abonelik girişi henüz uygulanmadı.
 Önceki oturumdan kimlik bilgileri taşınmadı. Yeni bir anahtar paylaşman gerekmez.
@@ -72,6 +77,15 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI, session kalıcılığı, Pals ve MCP henüz yeniden uygulanmadı.
+
+0.2: Shell en fazla 300 saniye (varsayılan 60 ve turn kalan süresiyle sınırlı),
+64 KiB birleşik çıktı; süreç grubu iptal/hata/çıktı sınırı ve normal lider
+çıkışında kapatılır. Yeni session/process group açarak kaçan kötü niyetli
+programlara karşı OS izolasyonu vaat edilmez; container sandbox sonraki aşamadır.
+Arama literal ve deterministiktir: 2048 girdi, 4 MiB tarama, 64 eşleşme;
+symlink ve .git/target/node_modules atlanır. Patch atomik dosya değişimi kullanır,
+tam bir old_text eşleşmesi ister ve dosya modunu korur. Harici editörlere karşı
+transaction/CAS garantisi yoktur.
 
 ## Yerel checkpoint ve kurtarma
 

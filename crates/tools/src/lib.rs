@@ -1,4 +1,6 @@
-//! Bounded, capability-relative filesystem tools. No shell or implicit network.
+//! Filesystem capabilities and explicitly granted host terminal tools.
+pub mod process;
+mod terminal;
 use cap_std::{
     ambient_authority,
     fs::{Dir, OpenOptions},
@@ -11,6 +13,7 @@ use std::{
     path::{Component, Path},
     sync::atomic::{AtomicU64, Ordering},
 };
+pub use terminal::{TerminalTools, ToolPolicy};
 
 const MAX_FILE: usize = 64 * 1024;
 const MAX_ENTRIES: usize = 512;
@@ -125,6 +128,12 @@ impl FileTools {
                     .open_with(&temporary, &options)
                     .map_err(|_| "cannot create temporary file")?;
                 let result = (|| {
+                    if let Ok(metadata) = parent.symlink_metadata(basename)
+                        && metadata.is_file()
+                    {
+                        file.set_permissions(metadata.permissions())
+                            .map_err(|_| "cannot preserve file permissions")?;
+                    }
                     file.write_all(args.content.as_bytes())
                         .map_err(|_| "cannot write temporary file")?;
                     file.sync_all().map_err(|_| "cannot sync temporary file")?;

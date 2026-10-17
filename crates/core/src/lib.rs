@@ -107,6 +107,17 @@ pub struct TurnContext {
     deadline: Instant,
 }
 impl TurnContext {
+    pub fn new(timeout: Duration, cancellation: Cancellation) -> Result<Self, AgentError> {
+        if timeout.is_zero() {
+            return Err(AgentError::Configuration("positive timeout required"));
+        }
+        Ok(Self {
+            cancellation,
+            deadline: Instant::now()
+                .checked_add(timeout)
+                .ok_or(AgentError::Configuration("timeout overflow"))?,
+        })
+    }
     pub fn remaining(&self) -> Result<Duration, AgentError> {
         if self.cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);

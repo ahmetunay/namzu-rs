@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn, run_turn};
 use namzu_provider::OpenAiCompatible;
-use namzu_tools::FileTools;
+use namzu_tools::{FileTools, TerminalTools, ToolPolicy};
 use serde_json::json;
 use std::{
     path::PathBuf,
@@ -43,6 +43,13 @@ enum Command {
         /// Grant writes within --cwd. Without this flag only read/list tools exist.
         #[arg(long)]
         allow_write: bool,
+        /// Grant host shell execution (also permits writes/network outside cwd).
+        #[arg(long)]
+        allow_shell: bool,
+        #[arg(long, value_delimiter = ',')]
+        tool_allow: Option<Vec<String>>,
+        #[arg(long, value_delimiter = ',')]
+        tool_deny: Vec<String>,
         #[arg(long)]
         json: bool,
     },
@@ -114,6 +121,9 @@ fn main() -> ExitCode {
             max_steps,
             max_tool_calls,
             allow_write,
+            allow_shell,
+            tool_allow,
+            tool_deny,
             json,
         } => {
             let result = (|| {
@@ -124,8 +134,16 @@ fn main() -> ExitCode {
                     .map_err(|_| "API key environment variable is missing or invalid".to_owned())?;
                 let mut provider =
                     OpenAiCompatible::new(&base_url, model, &key).map_err(|e| e.to_string())?;
-                let mut tools = FileTools::new(cwd, allow_write)
-                    .map_err(|_| "cannot open workspace".to_owned())?;
+                let mut tools = TerminalTools::new(
+                    cwd,
+                    ToolPolicy {
+                        allow_write,
+                        allow_shell,
+                        allow: tool_allow.map(|v| v.into_iter().collect()),
+                        deny: tool_deny.into_iter().collect(),
+                    },
+                )
+                .map_err(|_| "cannot open workspace".to_owned())?;
                 run_turn(
                     &mut provider,
                     &mut tools,
