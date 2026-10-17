@@ -55,7 +55,7 @@ izolasyonu 2.5'tedir.
 
 `tests/teams.rs` iki sağlayıcının aynı anda gerçekten girdiğini kanal/bariyerle,
 concurrency tavanını, sahipliği, kuyruğu, panic/iptali ve join'i sınar. Ücretli
-model kullanılmaz. 2.5 bilgisayarlar ve 2.6 CLI/TUI bağlantıları henüz yoktur.
+model kullanılmaz. 2.6 CLI/TUI bağlantıları henüz yoktur.
 
 
 ## 2.3: kalıcı Pals ve görev/oturum yaşam döngüsü
@@ -208,7 +208,7 @@ cargo run -p namzu-pals --example mailbox --locked
 yapar; duplicate girişi ve registry yeniden açıldıktan sonra ack kayıtlarını
 kontrol eder. Gerçek model/kota veya dış mesaj servisi kullanmaz.
 
-## Güncel kabul
+## 2.4 kabul kaydı
 
 2.4 sonrasında toplam **157 Rust testi** geçti. 22 yeni mailbox testi: gerçek
 alt süreçte beş çökme sınırı (yayınlama öncesi, claim sonrası, sağlayıcı içinde,
@@ -218,4 +218,25 @@ iptal ve bozuk binding kontrolü. Mevcut Pals/terminal/provider testleri de geç
 Format, workspace Clippy ve release derlemesi doğrulanır. Mailbox örneği offline
 çalışır; bu aşamada canlı model kotası kullanılmaz. Önceki TUI 1.4 / Pals 2.3
 kabulünde 25 gerçek Linux PTY senaryosu geçmişti; bu aşama TUI kodunu değiştirmez.
-2.5 izole Pal bilgisayarları ve 2.6 normal CLI/TUI Pals arayüzleri ayrı teslimlerdir.
+2.5 izole Pal bilgisayarları aşağıda eklendi; 2.6 normal CLI/TUI Pals arayüzleri
+ayrı teslimdir.
+
+
+## 2.5: sahip olunan Pal bilgisayarları
+
+`namzu-computer` ayrı native Rust kabiliyet paketidir. `Registry::computers`
+owner/Pal kimliğini doğrular, bilgisayar metadata'sını özel state altında tutar.
+Guest çalışma alanı ayrı named volume'dur; Pal'ın host çıktı klasörü, session,
+kimlik bilgileri ve Docker soketi container'a bağlanmaz. CPU/RAM/PID sınırları,
+ağsız/read-only-root/non-root yapı, binary dosya/shell API'si, sahiplik kilidi,
+kalıcı generation/pending, stop/start/restart ve güvenli kapsamlı cleanup vardır.
+
+Guest shell/transfer köprüsü de Rust'tır. Kullanıcı script'i için Python/Node
+runtime sarmalayıcısı veya host shell fallback yoktur. Image build ve test
+koşucuları geliştirme araçlarıdır. `GuestTools` SDK Tools sözleşmesini uygular;
+normal `exec/tui` Pals kullanıcı akışlarının bağlanması **2.6**'da yapılacaktır.
+Tarayıcı/görsel masaüstü yetenekleri 4'te, hard disk kotası/ağ politikası 5.4'tedir.
+
+174 Rust testi, 15 gerçek Docker kontrolü ve 25 Linux PTY regresyonu geçti.
+Model çağrısı 0. Kurulum, API, veri koruma ve cleanup sınırları:
+[docs/COMPUTERS.md](COMPUTERS.md).

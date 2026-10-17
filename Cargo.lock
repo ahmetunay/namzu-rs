@@ -1046,6 +1046,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "namzu-computer"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "cap-std",
+ "getrandom 0.4.3",
+ "libc",
+ "namzu-core",
+ "namzu-session",
+ "namzu-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "namzu-core"
 version = "0.1.0"
 dependencies = [
@@ -1058,6 +1074,7 @@ dependencies = [
 name = "namzu-pals"
 version = "0.1.0"
 dependencies = [
+ "namzu-computer",
  "namzu-core",
  "namzu-session",
  "namzu-tools",

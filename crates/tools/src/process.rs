@@ -1,9 +1,9 @@
 //! Unix process-group supervision. This is host execution, not OS confinement.
 use namzu_core::{AgentError, TurnContext};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::PathBuf,
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
@@ -18,7 +18,7 @@ pub struct ProcessSpec {
     pub output_limit: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessOutput {
     pub status: String,
     pub exit_code: Option<i32>,
@@ -131,9 +131,18 @@ fn drain(pipe: &mut impl Read, bytes: &mut Vec<u8>, left: &mut usize) -> io::Res
 }
 
 pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOutput, AgentError> {
+    run_process_input(spec, context, &[])
+}
+
+/// Concurrent bounded stdin/stdout: a guest that writes before reading cannot deadlock us.
+pub fn run_process_input(
+    spec: ProcessSpec,
+    context: &TurnContext,
+    input: &[u8],
+) -> Result<ProcessOutput, AgentError> {
     #[cfg(not(unix))]
     {
-        let _ = (spec, context);
+        let _ = (spec, context, input);
         return Err(AgentError::Configuration(
             "process supervision currently requires Unix",
         ));
@@ -142,7 +151,11 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
     {
         use std::os::unix::process::CommandExt;
         context.remaining()?;
-        if spec.output_limit == 0 || spec.output_limit > 4 * 1024 * 1024 || spec.timeout.is_zero() {
+        if spec.output_limit == 0
+            || spec.output_limit > 4 * 1024 * 1024
+            || spec.timeout.is_zero()
+            || input.len() > 4 * 1024 * 1024
+        {
             return Err(AgentError::Configuration("invalid process limits"));
         }
         let timeout = spec.timeout.min(context.remaining()?);
@@ -155,7 +168,7 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
             .current_dir(spec.cwd)
             .env_clear()
             .envs(spec.env)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0);
@@ -169,6 +182,12 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
             .stdout
             .take()
             .ok_or(AgentError::Protocol("missing process stdout"))?;
+        let mut stdin = child.child.stdin.take();
+        if let Some(pipe) = &stdin {
+            nonblocking(pipe)
+                .map_err(|_| AgentError::Provider("cannot configure process stdin".into()))?;
+        }
+        let mut written = 0;
         let mut err = child
             .child
             .stderr
@@ -182,6 +201,23 @@ pub fn run_process(spec: ProcessSpec, context: &TurnContext) -> Result<ProcessOu
         let mut left = spec.output_limit;
         loop {
             context.remaining()?;
+            if let Some(pipe) = &mut stdin {
+                match pipe.write(&input[written..]) {
+                    Ok(n) => written += n,
+                    Err(e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::Interrupted => {}
+                    Err(e) if e.kind() == io::ErrorKind::BrokenPipe => {
+                        written = input.len();
+                    }
+                    Err(_) => {
+                        return Err(AgentError::Provider("cannot write process stdin".into()));
+                    }
+                }
+                if written == input.len() {
+                    stdin.take();
+                }
+            }
             let exceeded = drain(&mut out, &mut stdout, &mut left)
                 .and_then(|a| drain(&mut err, &mut stderr, &mut left).map(|b| a || b))
                 .map_err(|_| AgentError::Provider("cannot read process output".into()))?;

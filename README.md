@@ -76,7 +76,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4 ve Pals SDK 2.1–2.4 tamamlandı; Pals 2.5–2.6 ve MCP henüz eksik.
+- TUI 1.1–1.4 ve Pals SDK 2.1–2.5 tamamlandı; Pals 2.6 ve MCP henüz eksik.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -197,7 +197,7 @@ yeni konuşma başlatır; başarısız session yalnızca görüntülenir. 103 Ru
 
 ## 2 — Pals
 
-Çocuk görevler için `namzu-pals` SDK paketi eklendi (2.1–2.4). Dar araç yetkileri,
+Çocuk görevler için `namzu-pals` SDK paketi eklendi (2.1–2.5). Dar araç yetkileri,
 ortak rezervasyon bütçesi, parent deadline/iptali, ayrı görev sonuçları ve
 sınırlı paralel ekipler var. Kalıcı kimlik/profil revizyonları, özel workspace,
 görev/session yaşam döngüsü ve çökme sonrası replay reddi de çalışır.
@@ -205,8 +205,12 @@ görev/session yaşam döngüsü ve çökme sonrası replay reddi de çalışır
 çocuk/ekip/kalıcı Pal örneği çalışır.
 `cargo run -p namzu-pals --example mailbox --locked` ile kalıcı mesaj kuyruğu,
 otomatik işleme ve duplicate/ack kontrolü hesap kullanmadan denenir. Süreli lease,
-restart uzlaştırması ve belirsiz etkide replay reddi var. Toplam 157 Rust testi;
-önceki TUI kabulünde ayrıca 25 terminal regresyonu geçti.
+restart uzlaştırması ve belirsiz etkide replay reddi var.
+`namzu-computer` native Rust köprüyle ayrı ağsız Docker bilgisayarları sunar:
+CPU/RAM/PID sınırı, ikili dosya aktarımı, guest shell, restart ve sahip olunan
+container/volume temizliği. `python3 scripts/build_pal_image.py` ile image kurulur;
+gerçek kabul ve sınırlar [docs/COMPUTERS.md](docs/COMPUTERS.md) içindedir.
+174 Rust testi, 15 gerçek Docker kontrolü ve 25 terminal regresyonu geçti.
 CLI/TUI Pals komutları 2.6'da bağlanacak. [Sözleşme](docs/PALS.md).
 
 ## Yerel checkpoint ve kurtarma

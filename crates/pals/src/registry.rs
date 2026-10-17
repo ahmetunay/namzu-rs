@@ -93,6 +93,21 @@ pub struct Registry {
     workspace_root: PathBuf,
 }
 impl Registry {
+    /// Owner-only computer controls; metadata stays outside the guest workspace.
+    pub fn computers(
+        &self,
+        owner: &str,
+        id: &str,
+        docker: namzu_computer::Docker,
+    ) -> Result<namzu_computer::ComputerManager, AgentError> {
+        self.load(owner, id)?;
+        namzu_computer::ComputerManager::from_store(
+            self.store.open_child(id)?.child("computers")?,
+            owner,
+            id,
+            docker,
+        )
+    }
     pub fn open(
         state_root: impl AsRef<Path>,
         workspace_root: impl AsRef<Path>,

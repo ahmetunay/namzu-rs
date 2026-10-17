@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals"]
+members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals", "crates/computer"]
 resolver = "2"
 
 [workspace.package]
@@ -20,3 +20,4 @@ namzu-session = { path = "crates/session" }
 namzu-bench = { path = "crates/bench" }
 namzu-tui = { path = "crates/tui" }
 namzu-pals = { path = "crates/pals" }
+namzu-computer = { path = "crates/computer" }
