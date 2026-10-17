@@ -1,0 +1,7 @@
+/target/
+/artifacts/
+/.env
+/.env.*
+!/config.example.json
+*.key
+credentials.json
