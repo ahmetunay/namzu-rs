@@ -60,7 +60,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | --- | --- | --- | --- |
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
-| 2 | Alt ajanlar / Pals | 2.1 tamam; 2.2–2.6 eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
+| 2 | Alt ajanlar / Pals | 2.1–2.2 tamam; 2.3–2.6 eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
@@ -108,7 +108,8 @@ terminal kapandığında artık çalışan alt süreç bırakmama.
 - **2.1 — Tamamlandı:** Tek kullanımlık çocuk görev, typed sonuç, dar araç kabulü,
   ortak rezervasyon bütçesi ve kesin parent deadline/iptal aktarımı; 112 Rust testi.
   SDK sözleşmesi ve sınırlar [docs/PALS.md](docs/PALS.md).
-- **2.2** — Paralel görevler/ekipler; concurrency sınırı, sahiplik ve iptal ağacı.
+- **2.2 — Tamamlandı:** Sınırlı worker havuzu, sıralı sonuçlar, scope/owner kabulü,
+  ekip/çocuk iptali, kuyruk ve join/panic yaşam döngüsü; 119 Rust testi.
 - **2.3** — Kalıcı Pals: kimlik, çalışma alanı, görev/oturum yaşam döngüsü.
 - **2.4** — Mesaj kuyruğu ve otomatik işleme: lease/ack, yeniden başlatma, yinelenen
 mesaj kontrolü; belirsiz araç etkisini körlemesine tekrarlamama.
@@ -197,7 +198,7 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 2.2 — paralel ekipler, concurrency ve sahiplik.**
+**Sıradaki iş: 2.3 — kalıcı Pal kimliği, workspace ve görev/oturum yaşam döngüsü.**
 0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
 katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
 low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında
@@ -205,7 +206,7 @@ low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı 
 Normal testler hâlâ canlı model çağırmaz. TUI 1.1–1.4 tamamlandı: 103 test,
 format, Clippy, release, 25 gerçek Linux PTY kontrolü ve ayrı GPT-6-Luna read-only
 canlı görev doğrulandı. Kabul ve sınırlar docs/TUI-ACCEPTANCE.md'de.
-Pals 2.1 tamamlandı; 2.2–2.6 ve MCP eksik. Kullanıcı 2.1, 2.2 ve 2.3 için
+Pals 2.1–2.2 tamamlandı; 2.3–2.6 ve MCP eksik. Kullanıcı 2.1, 2.2 ve 2.3 için
 sıralı çalışma ve her adımda ayrı commit/GitHub yüklemesi istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

@@ -28,5 +28,32 @@ delegasyon bütçesi kurar; `prepare(TaskSpec)` tek kullanımlık `ChildTask` ü
 
 Örnek kullanım `crates/pals/tests/children.rs` içindedir. Testler gerçek yerel
 dosya araçlarını ve scripted sağlayıcıyı kullanır; canlı model/kota kullanmaz.
-2.2 ekipler, 2.3 kalıcı kayıt, 2.4 mesaj kuyruğu, 2.5 container bilgisayarları
-ve 2.6 CLI/TUI bağlantıları henüz bu ilk teslimde yoktur.
+
+## 2.2: paralel ekipler
+
+`Team::new` ayrı delegasyon havuzu/iptal alt ağacı ve 1–16 concurrency seçer.
+`team.prepare` görevleri ilk etkiden önce kabul eder; `Job::new` her görev için
+ayrı owned sağlayıcı/araç/observer taşır. `team.run(jobs)` en fazla 64 görevi
+sınırlı worker havuzunda çalıştırır ve sonuçları **girdi sırasıyla** verir.
+Bir görevin hata/panic'i diğer görevlerin sonuçlarını kaybettirmez.
+
+`TeamControl` owner eşleşmeden ekip/görev iptalini reddeder. Başka bir ekibin
+Job'u, owner aynı olsa bile scope kimliğiyle ilk etkiden önce reddedilir.
+Host bu owner bilgisini doğrulanmış çağırandan sağlamalıdır; string bir OS
+kimlik doğrulama sistemi değildir. Kontrol nesneleri model mesajına verilmez.
+Ekip iptali çalışan ve kuyruktaki çocuklara yayılır; tek görev iptali kardeşlere
+yayılmaz. Ekip drop'u alt ağacı iptal eder. Çalıştırma dönmeden önce tüm başlayan
+worker'lar join edilir; arka planda unutulan thread yoktur. Kuyrukta da görev
+deadline'ı işlemeye devam eder. Panic payload'ı görev sonucuna eklenmez.
+
+İptal kooperatiftir: hostun verdiği Provider/Tools/Observer context'i kontrol
+etmelidir. Keyfi Rust kodu veya takılmış kernel çağrısı zorla öldürülmez.
+Host her ekip için ayrı **kalan** bütçe ayırır; ayrı ekip havuzlarının toplamını
+takip etme sorumluluğu hosttadır. Paralel host yazmalarının çakışmalarını SDK
+birleştirmez; ayrı workspace veya salt-okunur araçlar kullanılır. Container
+izolasyonu 2.5'tedir.
+
+`tests/teams.rs` iki sağlayıcının aynı anda gerçekten girdiğini kanal/bariyerle,
+concurrency tavanını, sahipliği, kuyruğu, panic/iptali ve join'i sınar. Ücretli
+model kullanılmaz. 2.3 kalıcı kayıt, 2.4 mesaj kuyruğu, 2.5 bilgisayarlar ve 2.6
+CLI/TUI bağlantıları bu teslimde henüz yoktur.

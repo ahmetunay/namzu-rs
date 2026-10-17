@@ -1,4 +1,5 @@
 //! Explicit child-agent SDK. No implicit provider, credentials, shell or global state.
+mod team;
 use namzu_core::{
     AgentError, Limits, Message, Observer, Provider, ToolCall, ToolDefinition, ToolResult, Tools,
     Turn, TurnContext, run_history_in_context,
@@ -11,6 +12,7 @@ use std::{
     },
     time::Duration,
 };
+pub use team::{Job, Team, TeamControl};
 
 static SCOPES: AtomicU64 = AtomicU64::new(1);
 const READ_ONLY: &[&str] = &["read_file", "list_files", "search_files", "diff_file"];
