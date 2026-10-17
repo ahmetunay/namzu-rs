@@ -313,7 +313,7 @@ fn native_http_tool_roundtrip_replays_opaque_reasoning_and_correct_ids() {
             assert_eq!(body["tools"][0]["type"], "function");
             (
                 200,
-                "text/event-stream",
+                "application/octet-stream",
                 completed(
                     json!([{"type":"reasoning","id":"r1","encrypted_content":"opaque-fixture"},{"type":"function_call","id":"fc1","call_id":"call-1","name":"effect","arguments":"{}"}]),
                 ),

@@ -138,6 +138,7 @@ hatası gibi kurtarılamayan durumlar açık hata verir; yeniden login gerekebil
 JWT payload'ı yalnızca hesap/expiry metadata'sı içindir; imza doğrulaması iddiası
 yoktur, gerçek token kabulü HTTPS servisinindir. Status tokenları göstermez.
 
+Yanıtın Content-Type alanından bağımsız olarak gerçek SSE içeriği doğrulanır;
 Responses/SSE tamamlanmadan araçlar çalıştırılmaz. Kesik/incomplete/refused
 yanıtlar başarısızdır. Yerel SSE sınırları: 1 MiB olay/satır, 16 MiB akış,
 4096 output item. Opaque reasoning ve native tool item'ları özel session'a

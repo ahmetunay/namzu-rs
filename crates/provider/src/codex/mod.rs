@@ -218,14 +218,9 @@ impl Provider for CodexProvider {
                 response.status().as_u16()
             )));
         }
-        if !response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.split(';').next() == Some("text/event-stream"))
-        {
-            return Err(AgentError::Protocol("expected Codex SSE response"));
-        }
+        // Some compatible deployments omit the SSE media type. The bounded
+        // parser validates actual SSE and requires a completed response before
+        // returning any tool calls; the media type alone is not authoritative.
         let (completion, items) = sse::parse(BufReader::new(response), context)?;
         self.replay = Some(
             json!({"kind":"namzu.codex.responses","route":route,"signature":{"text":completion.text,"tool_calls":completion.tool_calls},"items":items}),
