@@ -73,7 +73,7 @@ class Screen:
 
 
 class Terminal:
-    def __init__(self, binary, args, cwd):
+    def __init__(self, binary, args, cwd, command=None):
         self.master, self.slave = pty.openpty()
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 28, 100, 0, 0))
         self.original = termios.tcgetattr(self.slave)
@@ -92,7 +92,7 @@ class Terminal:
                 env['NAMZU_TUI_FIXTURE_KEY'] = 'fixture-only-not-a-real-key'
                 for name in ('NO_PROXY', 'no_proxy'):
                     env[name] = ','.join(filter(None, [env.get(name), '127.0.0.1', 'localhost']))
-                os.execve(str(binary), [str(binary), 'tui', *args], env)
+                os.execve(str(binary), [str(binary), *(command or ['tui']), *args], env)
             except BaseException:
                 os._exit(127)
 

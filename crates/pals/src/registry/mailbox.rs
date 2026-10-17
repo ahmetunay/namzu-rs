@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, time::Duration};
 mod worker;
 pub use worker::{
-    BatchBudget, BatchResult, DeliveryResult, HostRuntime, MailboxHost, MailboxRuntime,
+    BatchBudget, BatchResult, DeliveryResult, GuardedObserver, HostRuntime, MailboxExecutor,
+    MailboxHost, MailboxRuntime,
 };
 
 pub trait MailboxClock {
@@ -124,7 +125,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     }
     pub fn send(&self, message: MailMessage) -> Result<SendReceipt, AgentError> {
         validate_message(&message)?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         if let Some(existing) = record.mailbox.iter().find(|e| e.message.id == message.id) {
             if existing.message != message {
@@ -165,7 +166,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     /// Reconcile only expired claims while no Pal execution owns the process lock.
     pub fn recover(&self) -> Result<(), AgentError> {
         let _run = self.registry.store.lock(&format!("{}-run", self.pal_id))?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         if self.reconcile(&mut record)? {
             self.registry.save(&self.pal_id, &record)?;
@@ -179,7 +180,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
         let until_ms = deadline(self.clock.now_ms(), lease_for)?;
         // Same lock order as start_task: no expiry takeover of a live worker.
         let _run = self.registry.store.lock(&format!("{}-run", self.pal_id))?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         if self.reconcile(&mut record)? {
             self.registry.save(&self.pal_id, &record)?;
@@ -238,7 +239,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     }
     pub fn renew(&self, lease: &Lease, lease_for: Duration) -> Result<(), AgentError> {
         let until_ms = deadline(self.clock.now_ms(), lease_for)?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         let index = self.validate_lease(&record, lease, true)?;
         let DeliveryState::Leased {
@@ -253,7 +254,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     /// Release only a claim with a pristine queued session; started work cannot retry.
     pub fn release(&self, lease: &Lease) -> Result<(), AgentError> {
         let _run = self.registry.store.lock(&format!("{}-run", self.pal_id))?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         let index = self.validate_lease(&record, lease, true)?;
         let task = find_task(&record, &lease.task_id)?;
@@ -269,7 +270,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     /// Acknowledge a durably terminal task; this method never runs model/tool work.
     pub fn ack(&self, lease: &Lease) -> Result<DeliveryState, AgentError> {
         let _run = self.registry.store.lock(&format!("{}-run", self.pal_id))?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         let index = self.validate_lease(&record, lease, false)?;
         if matches!(
@@ -293,7 +294,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
     /// Explicit host acknowledgement after inspecting effects; no replay or rollback.
     pub fn resolve_inspection(&self, message_id: &str) -> Result<(), AgentError> {
         let _run = self.registry.store.lock(&format!("{}-run", self.pal_id))?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.owner, &self.pal_id)?;
         let index = record
             .mailbox

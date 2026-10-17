@@ -60,7 +60,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | --- | --- | --- | --- |
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
-| 2 | Alt ajanlar / Pals | 2.1–2.5 tamam; 2.6 eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
+| 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
@@ -121,9 +121,13 @@ terminal kapandığında artık çalışan alt süreç bırakmama.
 - **2.5 — Tamamlandı:** Native Rust guest köprüsü, sahibi/generation bağlı ağsız
   container, CPU/RAM/PID sınırları, binary dosya/shell araçları, kalıcı volume,
   start/stop/restart/cleanup ve çökme sonrası pending koruması; 174 Rust testi,
-  15 gerçek Docker kontrolü ve 25 TUI PTY regresyonu. Disk kotası/normal CLI-TUI
-  akışı bu teslimde yok; kapsam [docs/COMPUTERS.md](docs/COMPUTERS.md).
-- **2.6** — SDK/CLI/TUI bağlantıları ve uçtan uca kabul testleri.
+  15 gerçek Docker kontrolü ve 25 TUI PTY regresyonu. Disk kotası ve normal CLI-TUI
+  akışı bu 2.5 tesliminde yok; kapsam [docs/COMPUTERS.md](docs/COMPUTERS.md).
+- **2.6 — Tamamlandı:** Açık `pal` CLI grubu; model/hesap ve izin bağlı görev,
+  followup, sınırlı paralel ekip, mesaj pump'ı ve bilgisayar yönetimi; ortak
+  host/guest adaptörü ve Pal TUI geçmiş/onay/iptali. 187 Rust testi, 30 gerçek
+  Linux PTY ve 24 gerçek Docker kontrolü; canlı model çağrısı 0.
+  [Kullanım](docs/PALS-CLI.md), [kabul/kapsam](docs/PALS-ACCEPTANCE.md).
 
 Kabul: birbirinden izole Pals, daraltılan izinler, deterministik paralel
 sonuçlar, çökme/iptal ve gerçek container temizliği. Görsel yetenekler 4'te.
@@ -206,7 +210,7 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 2.6 — SDK/CLI/TUI Pals bağlantıları ve uçtan uca kabul.**
+**Sıradaki iş: 3.1 — MCP protokolü, veri tipleri ve JSON-RPC sınırları.**
 0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
 katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
 low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında
@@ -214,7 +218,7 @@ low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı 
 Normal testler hâlâ canlı model çağırmaz. TUI 1.1–1.4 tamamlandı: 103 test,
 format, Clippy, release, 25 gerçek Linux PTY kontrolü ve ayrı GPT-6-Luna read-only
 canlı görev doğrulandı. Kabul ve sınırlar docs/TUI-ACCEPTANCE.md'de.
-Pals 2.1–2.5 tamamlandı; 2.6 ve MCP eksik. Kullanıcı kaldığı yerden devam
+Pals 2.1–2.6 tamamlandı; MCP henüz eksik. Kullanıcı kaldığı yerden devam
 edilmesini ve her aşamada ayrı commit/GitHub yüklemesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

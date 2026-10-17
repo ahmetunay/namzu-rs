@@ -11,9 +11,9 @@ use std::{
 };
 mod mailbox;
 pub use mailbox::{
-    BatchBudget, BatchResult, DeliveryResult, DeliveryState, Envelope, HostRuntime, Lease,
-    MailMessage, MailSender, Mailbox, MailboxClock, MailboxHost, MailboxRuntime, SendReceipt,
-    SystemClock,
+    BatchBudget, BatchResult, DeliveryResult, DeliveryState, Envelope, GuardedObserver,
+    HostRuntime, Lease, MailMessage, MailSender, Mailbox, MailboxClock, MailboxExecutor,
+    MailboxHost, MailboxRuntime, SendReceipt, SystemClock,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,11 +192,24 @@ impl Registry {
         self.store.open_child(id)?;
         Ok(record)
     }
+    fn registry_lock(&self) -> Result<StoreLock, AgentError> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match self.store.lock("registry") {
+                Err(AgentError::State("state is busy in another process"))
+                    if std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(1))
+                }
+                result => return result,
+            }
+        }
+    }
     fn save(&self, id: &str, record: &Record) -> Result<(), AgentError> {
         self.store.write(&format!("{id}.json"), record)
     }
     pub fn create(&self, input: PalCreate) -> Result<PalDefinition, AgentError> {
-        let _lock = self.store.lock("registry")?;
+        let _lock = self.registry_lock()?;
         let id = format!("p-{}", new_id());
         let now = now_ms();
         let pal = PalDefinition {
@@ -277,7 +290,7 @@ impl Registry {
         expected_revision: u64,
         changes: PalUpdate,
     ) -> Result<PalDefinition, AgentError> {
-        let _lock = self.store.lock("registry")?;
+        let _lock = self.registry_lock()?;
         let mut record = self.load(owner, id)?;
         let mut pal = record
             .revisions
@@ -346,7 +359,7 @@ impl Registry {
         prompt: &str,
         source: Option<&str>,
     ) -> Result<TaskRecord, AgentError> {
-        let _lock = self.store.lock("registry")?;
+        let _lock = self.registry_lock()?;
         let mut record = self.load(owner, id)?;
         let task = self.append_task(id, &mut record, task_id, prompt, source)?;
         self.save(id, &record)?;
@@ -446,7 +459,7 @@ impl Registry {
             return Err(AgentError::State("invalid Pal ID"));
         }
         let run_lock = self.store.lock(&format!("{id}-run"))?;
-        let _lock = self.store.lock("registry")?;
+        let _lock = self.registry_lock()?;
         let mut record = self.load(owner, id)?;
         admit(&record)?;
         require_active(record.revisions.last().expect("validated revisions"))?;
@@ -491,7 +504,7 @@ impl Registry {
             return Err(AgentError::State("invalid Pal ID"));
         }
         let _run = self.store.lock(&format!("{id}-run"))?;
-        let _lock = self.store.lock("registry")?;
+        let _lock = self.registry_lock()?;
         let mut record = self.load(owner, id)?;
         if record.mailbox.iter().any(|e| e.task_id == task_id) {
             return Err(AgentError::State(
@@ -625,7 +638,7 @@ impl PalRun<'_> {
         self.session.updated_ms = now_ms();
         self.session
             .save(&self.registry.store.open_child(&self.pal.id)?)?;
-        let _lock = self.registry.store.lock("registry")?;
+        let _lock = self.registry.registry_lock()?;
         let mut record = self.registry.load(&self.pal.owner, &self.pal.id)?;
         let task = find_task_mut(&mut record, &self.task_id)?;
         if task.status != TaskStatus::Running || task.session_id != self.session.id {

@@ -126,5 +126,18 @@ client SIGKILL sonrası pending etkiyi tekrar etmeden inceleme. Canlı model ça
 Normal `cargo test` Docker başlatmaz. Gerçek kabul yukarıdaki smoke örneğiyle açıkça
 çalışır. Genel süreç supervisor'ına stdin eklendiği için mevcut 25 Linux TUI PTY
 senaryosu da yeniden doğrulanır. Pal/CLI/TUI'nin normal kullanıcı akışlarını bu
-bilgisayarlara bağlama ve uçtan uca kabul, **2.6** aşamasıdır. Görsel masaüstü ve
+bilgisayarlara bağlama ve uçtan uca kabul **2.6**'da tamamlandı;
+[PALS-CLI.md](PALS-CLI.md) ve [kabul](PALS-ACCEPTANCE.md). Görsel masaüstü ve
 tarayıcı eylemleri **4. aşama** kapsamındadır.
+
+
+## 2.6 host yaşam döngüsü
+
+`GuestTools::into_computer` lease'i hosta geri verir. `release` sağlıklı idle
+bilgisayarı çalışır/stopped haliyle açıkça korur; pending lifecycle bırakamaz.
+`preserve_workspace_on_drop`, kalıcı CLI bilgisayarında erken dönüş/panic
+sırasında volume silinmesini önler; Drop remote işi yine bağımsız bounded cleanup
+ile durdurur. `detach` stop+retain, `close` owned cleanup olarak kalır. Normal
+SDK'nin varsayılan sağlıklı Drop temizliği değişmez. CLI görev/aktarımlar sonunda
+kalıcı volume durdurularak saklanır; geçici sağlıklı bilgisayar açıkça silinir.
+Pending bilgisayarda model yazması engellenir, host inspection/ack gerekir.

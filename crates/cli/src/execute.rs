@@ -83,54 +83,22 @@ pub fn execute_observed(
     let mut session_id = None;
     let result = (|| {
         let state_dir = args.state_dir.clone().unwrap_or(default_state_dir()?);
-        let explicit_base_url = args.base_url.is_some();
         let store = PrivateStore::open(&state_dir)?;
         let mut config = config_for(&args, &store)?;
-        let model = config.model.clone().ok_or(AgentError::Configuration(
-            "model required via --model or selected config",
-        ))?;
-        let mut provider = if config.provider == "codex" {
-            if explicit_base_url {
-                return Err(AgentError::Configuration(
-                    "Codex uses a fixed subscription endpoint; --base-url is for API-key providers",
-                ));
-            }
-            Driver::Codex(Box::new(namzu_provider::codex::CodexProvider::new(
-                state_dir,
-                model.clone(),
-                args.effort,
-            )?))
-        } else {
-            if args.effort.is_some() {
-                return Err(AgentError::Configuration(
-                    "--effort currently applies to Codex only",
-                ));
-            }
-            let key = std::env::var(&config.api_key_env).map_err(|_| {
-                AgentError::Configuration("API key environment variable is missing or invalid")
-            })?;
-            Driver::Api(Box::new(OpenAiCompatible::new(
-                &config.base_url,
-                model.clone(),
-                &key,
-            )?))
-        };
+        let mut provider = driver_for(&args, &config)?;
         let cwd = args
             .cwd
             .canonicalize()
             .map_err(|_| AgentError::Configuration("cannot open workspace"))?;
-        let route = if let Driver::Codex(driver) = &provider {
-            driver.route_identity(&namzu_core::TurnContext::new(
+        let route = provider.route(
+            &config,
+            &namzu_core::TurnContext::new(
                 Duration::from_secs(config.timeout)
                     .checked_sub(started.elapsed())
-                    .ok_or(AgentError::Timeout)?
-                    .min(Duration::from_secs(30)),
+                    .ok_or(AgentError::Timeout)?,
                 cancellation.clone(),
-            )?)?
-        } else {
-            serde_json::to_string(&(&config.provider, &config.base_url, &model))
-                .map_err(|_| AgentError::Configuration("cannot encode provider route"))?
-        };
+            )?,
+        )?;
         let id = args.resume.clone().unwrap_or_else(new_id);
         let _lock = store.lock(&id)?;
         let mut session = if args.resume.is_some() {
@@ -195,10 +163,59 @@ pub fn execute_observed(
     Execution { session_id, result }
 }
 
-enum Driver {
+pub(crate) enum Driver {
     Api(Box<OpenAiCompatible>),
     Codex(Box<namzu_provider::codex::CodexProvider>),
 }
+pub(crate) fn driver_for(args: &RunOptions, config: &Config) -> Result<Driver, AgentError> {
+    let model = config.model.clone().ok_or(AgentError::Configuration(
+        "model required via --model or selected config",
+    ))?;
+    if config.provider == "codex" {
+        if args.base_url.is_some() {
+            return Err(AgentError::Configuration(
+                "Codex uses a fixed subscription endpoint; --base-url is for API-key providers",
+            ));
+        }
+        Ok(Driver::Codex(Box::new(
+            namzu_provider::codex::CodexProvider::new(
+                args.state_dir.clone().map_or_else(default_state_dir, Ok)?,
+                model,
+                args.effort.clone(),
+            )?,
+        )))
+    } else {
+        if args.effort.is_some() {
+            return Err(AgentError::Configuration(
+                "--effort currently applies to Codex only",
+            ));
+        }
+        let key = std::env::var(&config.api_key_env).map_err(|_| {
+            AgentError::Configuration("API key environment variable is missing or invalid")
+        })?;
+        Ok(Driver::Api(Box::new(OpenAiCompatible::new(
+            &config.base_url,
+            model,
+            &key,
+        )?)))
+    }
+}
+impl Driver {
+    pub(crate) fn route(
+        &self,
+        config: &Config,
+        context: &namzu_core::TurnContext,
+    ) -> Result<String, AgentError> {
+        context.remaining()?;
+        if let Self::Codex(driver) = self {
+            driver.route_identity(&context.child(Duration::from_secs(30))?)
+        } else {
+            serde_json::to_string(&(&config.provider, &config.base_url, &config.model))
+                .map_err(|_| AgentError::Configuration("cannot encode provider route"))
+        }
+    }
+}
+
 impl namzu_core::Provider for Driver {
     fn take_state(&mut self) -> Option<serde_json::Value> {
         match self {

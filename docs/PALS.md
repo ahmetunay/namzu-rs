@@ -55,7 +55,7 @@ izolasyonu 2.5'tedir.
 
 `tests/teams.rs` iki sağlayıcının aynı anda gerçekten girdiğini kanal/bariyerle,
 concurrency tavanını, sahipliği, kuyruğu, panic/iptali ve join'i sınar. Ücretli
-model kullanılmaz. 2.6 CLI/TUI bağlantıları henüz yoktur.
+model kullanılmaz. CLI/TUI bağlantıları 2.6'da eklendi: [PALS-CLI.md](PALS-CLI.md).
 
 
 ## 2.3: kalıcı Pals ve görev/oturum yaşam döngüsü
@@ -159,7 +159,7 @@ servislere mesaj göndermez.
   sığmalıdır; süre tüm batch için tek parent deadline'ıyla sınırlıdır. Önceki
   teslim sonuçları ve durma nedeni `BatchResult` içinde korunur. Hatalı model/araç
   işi kendiliğinden tekrar denenmez. Arka planda kopuk thread/daemon oluşturmaz;
-  sürekli polling/CLI/TUI sürücüsü 2.6'da bağlanacaktır.
+  CLI `pal work` sonlu işleyicisi 2.6'da bağlandı; sürekli daemon yoktur.
 - `ack`: yalnızca diskte terminal task'ı kapatır ve aynı claim için idempotenttir.
   Complete/failed/cancelled/interrupted sonucu modele geri dönmeden saklanır.
   Pending araç veya session/status uyuşmazlığı varsa `NeedsInspection` olur.
@@ -234,9 +234,27 @@ kalıcı generation/pending, stop/start/restart ve güvenli kapsamlı cleanup va
 Guest shell/transfer köprüsü de Rust'tır. Kullanıcı script'i için Python/Node
 runtime sarmalayıcısı veya host shell fallback yoktur. Image build ve test
 koşucuları geliştirme araçlarıdır. `GuestTools` SDK Tools sözleşmesini uygular;
-normal `exec/tui` Pals kullanıcı akışlarının bağlanması **2.6**'da yapılacaktır.
+açık `pal ask/team/work/tui` kullanıcı akışlarına **2.6**'da bağlandı.
 Tarayıcı/görsel masaüstü yetenekleri 4'te, hard disk kotası/ağ politikası 5.4'tedir.
 
 174 Rust testi, 15 gerçek Docker kontrolü ve 25 Linux PTY regresyonu geçti.
 Model çağrısı 0. Kurulum, API, veri koruma ve cleanup sınırları:
 [docs/COMPUTERS.md](COMPUTERS.md).
+
+
+## 2.6: kullanılabilir CLI/TUI ve scoped host adaptörü
+
+`MailboxExecutor`, borrowed computer lease'ini bir SDK turn boyunca açıp
+`GuardedObserver` ile lease fencing'i koruyarak çalıştırır. Mevcut
+`MailboxHost::open` hostları blanket adaptörle çalışmayı sürdürür. Kısa registry
+metadata kilidi en fazla beş saniye bounded bekler; Pal run lock'u tek owner için
+nonblocking kalır. Kalıcı workspace, host setup iptali/panic sırasında da korunur;
+remote iş bağımsız cleanup context'iyle durdurulur.
+
+`pal` komutları ve Pal TUI'si mevcut model/provider/account, pinned profil,
+izin/bütçe/session sözleşmelerini kullanır. Ekipler ayrı kalıcı Pals üzerinde
+sınırlı joined worker'larla çalışır; `work` FIFO mesajları otomatik ve sonlu işler.
+187 Rust testi, 30 Linux PTY ve 24 gerçek Docker kontrolü geçti. SDK/CLI/TUI
+kullanımı [PALS-CLI.md](PALS-CLI.md); kapsam ve kanıt
+[PALS-ACCEPTANCE.md](PALS-ACCEPTANCE.md). Planlanan 2.1–2.6 tamamdır;
+MCP ve görsel tarayıcı/computer ayrı modüllerdir.

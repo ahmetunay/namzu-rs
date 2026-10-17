@@ -15,6 +15,9 @@ impl<'a, E: Engine> GuestTools<'a, E> {
     pub fn computer_mut(&mut self) -> &mut Computer<'a, E> {
         &mut self.computer
     }
+    pub fn into_computer(self) -> Computer<'a, E> {
+        self.computer
+    }
     fn admitted(&self, name: &str) -> bool {
         !self.policy.deny.contains(name)
             && self.policy.allow.as_ref().is_none_or(|s| s.contains(name))

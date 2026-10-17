@@ -1417,3 +1417,129 @@ fn sender_metadata_is_never_promoted_to_system_instructions() {
         .result
         .unwrap();
 }
+
+#[test]
+fn scoped_executor_rechecks_delivery_fence_after_host_callback_before_tool_effect() {
+    use namzu_pals::{GuardedObserver, MailboxExecutor, PalRun};
+    let root = tempfile::tempdir().unwrap();
+    let reg = registry(root.path());
+    let p = pal(&reg, true);
+    let clock = Clock::new();
+    let m = inbox(&reg, &p, &clock);
+    m.send(MailMessage::operator("scoped", "write once"))
+        .unwrap();
+    let lease = m.claim("worker", Duration::from_secs(1)).unwrap().unwrap();
+    struct Expire(Clock);
+    impl Observer for Expire {
+        fn event(&mut self, event: Event) -> Result<(), AgentError> {
+            if matches!(event, Event::ToolStarted { .. }) {
+                self.0.set(2000);
+            }
+            Ok(())
+        }
+        fn checkpoint(
+            &mut self,
+            _: &[Message],
+            _: &Stats,
+            _: Option<&ToolCall>,
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+    struct Scoped<'a> {
+        entered: &'a mut usize,
+        clock: Clock,
+    }
+    impl MailboxExecutor for Scoped<'_> {
+        fn execute(
+            &mut self,
+            run: PalRun<'_>,
+            context: &TurnContext,
+            limits: Limits,
+            guard: &mut dyn Observer,
+        ) -> Result<namzu_core::Turn, AgentError> {
+            *self.entered += 1;
+            let mut tools = terminal(run.definition());
+            let mut host = Expire(self.clock.clone());
+            run.execute(
+                &mut script(true),
+                &mut tools,
+                context,
+                limits,
+                &mut GuardedObserver {
+                    host: &mut host,
+                    guard,
+                },
+            )
+        }
+    }
+    let mut entered = 0;
+    let delivery = m
+        .process_claimed(
+            &lease,
+            &context(),
+            Limits::default(),
+            &mut Scoped {
+                entered: &mut entered,
+                clock,
+            },
+        )
+        .unwrap();
+    assert_eq!(entered, 1);
+    assert!(delivery.result.is_err());
+    assert!(!p.workspace.join("answer.txt").exists());
+    assert!(matches!(
+        delivery.delivery,
+        DeliveryState::NeedsInspection { .. }
+    ));
+    assert!(
+        reg.session("owner", &p.id, &delivery.task_id)
+            .unwrap()
+            .pending_call
+            .is_some()
+    );
+}
+
+#[test]
+fn composed_observer_never_overrides_a_guard_denial() {
+    use namzu_pals::GuardedObserver;
+    struct Deny;
+    impl Observer for Deny {
+        fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
+            Ok(false)
+        }
+        fn checkpoint(
+            &mut self,
+            _: &[Message],
+            _: &Stats,
+            _: Option<&ToolCall>,
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let reg = registry(root.path());
+    let p = pal(&reg, true);
+    let result = namzu_core::run_history(
+        &mut script(true),
+        &mut terminal(&p),
+        vec![Message::User {
+            content: "write".into(),
+        }],
+        Limits::default(),
+        Cancellation::default(),
+        &mut GuardedObserver {
+            host: &mut NoopObserver,
+            guard: &mut Deny,
+        },
+    )
+    .unwrap();
+    assert_eq!(result.output, "done");
+    assert!(!p.workspace.join("answer.txt").exists());
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::Tool { is_error: true, .. }))
+    );
+}

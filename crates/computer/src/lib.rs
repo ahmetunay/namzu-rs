@@ -206,6 +206,7 @@ impl<E: Engine> ComputerManager<E> {
             record,
             _lock: lock,
             retained: false,
+            preserve_workspace: false,
         };
         let result = (|| {
             self.done(
@@ -280,6 +281,7 @@ impl<E: Engine> ComputerManager<E> {
             record,
             _lock: lock,
             retained: false,
+            preserve_workspace: false,
         })
     }
     pub fn recover_cleanup(&self, ctx: &TurnContext) -> Result<(), AgentError> {
@@ -396,8 +398,14 @@ pub struct Computer<'a, E: Engine = Docker> {
     record: ComputerRecord,
     _lock: StoreLock,
     retained: bool,
+    preserve_workspace: bool,
 }
 impl<E: Engine> Computer<'_, E> {
+    /// A persistent host session keeps files on early return/unwind, while Drop
+    /// still stops remote work with an independent bounded cleanup context.
+    pub fn preserve_workspace_on_drop(&mut self) {
+        self.preserve_workspace = true;
+    }
     pub fn snapshot(&self) -> &ComputerRecord {
         &self.record
     }
@@ -452,6 +460,21 @@ impl<E: Engine> Computer<'_, E> {
             self.retained = true;
         }
         result
+    }
+    /// Explicit host control: release the client lease while retaining an idle,
+    /// healthy computer and its volume. Running PID1 remains resource constrained.
+    /// User work must already have completed; pending effects cannot be released.
+    pub fn release(mut self, ctx: &TurnContext) -> Result<ComputerRecord, AgentError> {
+        ctx.remaining()?;
+        if self.record.pending.is_some()
+            || !matches!(self.record.phase, Phase::Running | Phase::Stopped)
+        {
+            return Err(AgentError::State(
+                "only a healthy idle computer can be released",
+            ));
+        }
+        self.retained = true;
+        Ok(self.record.clone())
     }
     pub fn detach(mut self, ctx: &TurnContext) -> Result<ComputerRecord, AgentError> {
         self.stop(ctx)?;
@@ -694,7 +717,8 @@ impl<E: Engine> Drop for Computer<'_, E> {
                 self.record.phase,
                 Phase::CleanupRequired | Phase::Creating | Phase::Starting | Phase::Stopping
             );
-            if self.record.pending.is_some()
+            if self.preserve_workspace
+                || self.record.pending.is_some()
                 || matches!(
                     self.record.phase,
                     Phase::CleanupRequired | Phase::Creating | Phase::Starting | Phase::Stopping

@@ -16,8 +16,13 @@ namzu-provider.workspace = true
 namzu-session.workspace = true
 namzu-bench.workspace = true
 namzu-tui.workspace = true
+namzu-pals.workspace = true
+namzu-computer.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 tempfile.workspace = true
 ctrlc = { version = "3", features = ["termination"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

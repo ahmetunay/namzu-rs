@@ -1,5 +1,5 @@
 use super::{DeliveryState, Lease, Mailbox, MailboxClock, TaskStatus, find_task};
-use crate::PalDefinition;
+use crate::{PalDefinition, PalRun};
 use namzu_core::{
     AgentError, Event, Limits, Message, Observer, Provider, Stats, ToolCall, Tools, Turn,
     TurnContext,
@@ -26,6 +26,80 @@ pub trait MailboxHost {
         pal: &PalDefinition,
         context: &TurnContext,
     ) -> Result<HostRuntime<Self>, AgentError>;
+}
+/// Scoped runtime adapter: borrowed container leases need not become self-referential
+/// owned values. Implementations must execute the run with the supplied guard.
+pub trait MailboxExecutor {
+    fn execute(
+        &mut self,
+        run: PalRun<'_>,
+        context: &TurnContext,
+        limits: Limits,
+        guard: &mut dyn Observer,
+    ) -> Result<Turn, AgentError>;
+}
+/// Compose host presentation with delivery fencing, before and after callbacks.
+pub struct GuardedObserver<'a> {
+    pub host: &'a mut dyn Observer,
+    pub guard: &'a mut dyn Observer,
+}
+impl Observer for GuardedObserver<'_> {
+    fn approve(&mut self, call: &ToolCall, context: &TurnContext) -> Result<bool, AgentError> {
+        if !self.guard.approve(call, context)? {
+            return Ok(false);
+        }
+        let approved = self.host.approve(call, context)?;
+        Ok(self.guard.approve(call, context)? && approved)
+    }
+    fn event(&mut self, event: Event) -> Result<(), AgentError> {
+        self.guard.event(event.clone())?;
+        self.host.event(event.clone())?;
+        self.guard.event(event)
+    }
+    fn checkpoint(
+        &mut self,
+        messages: &[Message],
+        stats: &Stats,
+        pending: Option<&ToolCall>,
+    ) -> Result<(), AgentError> {
+        self.guard.checkpoint(messages, stats, pending)?;
+        self.host.checkpoint(messages, stats, pending)?;
+        self.guard.checkpoint(messages, stats, pending)
+    }
+}
+impl<H: MailboxHost> MailboxExecutor for H {
+    fn execute(
+        &mut self,
+        mut run: PalRun<'_>,
+        context: &TurnContext,
+        limits: Limits,
+        guard: &mut dyn Observer,
+    ) -> Result<Turn, AgentError> {
+        let mut runtime = match context
+            .remaining()
+            .and_then(|_| self.open(run.definition(), context))
+        {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                run.finish(if error == AgentError::Cancelled {
+                    TaskStatus::Cancelled
+                } else {
+                    TaskStatus::Failed
+                })?;
+                return Err(error);
+            }
+        };
+        run.execute(
+            &mut runtime.provider,
+            &mut runtime.tools,
+            context,
+            limits,
+            &mut GuardedObserver {
+                host: &mut runtime.observer,
+                guard,
+            },
+        )
+    }
 }
 pub struct DeliveryResult {
     pub message_id: String,
@@ -101,7 +175,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
         worker: &str,
         parent: &TurnContext,
         limits: Limits,
-        host: &mut impl MailboxHost,
+        host: &mut impl MailboxExecutor,
     ) -> Result<Option<DeliveryResult>, AgentError> {
         validate_limits(&limits)?;
         let context = parent.child(limits.timeout)?;
@@ -121,41 +195,26 @@ impl<C: MailboxClock> Mailbox<'_, C> {
         lease: &Lease,
         parent: &TurnContext,
         limits: Limits,
-        host: &mut impl MailboxHost,
+        host: &mut impl MailboxExecutor,
     ) -> Result<DeliveryResult, AgentError> {
         validate_limits(&limits)?;
         let context = parent.child(limits.timeout)?;
-        let mut run = self.registry.start_task_checked(
+        let run = self.registry.start_task_checked(
             &self.owner,
             &self.pal_id,
             &lease.task_id,
             |record| self.validate_lease(record, lease, true).map(|_| ()),
         )?;
-        let runtime = context
-            .remaining()
-            .and_then(|_| host.open(run.definition(), &context));
-        let result = match runtime {
-            Ok(mut runtime) => run.execute(
-                &mut runtime.provider,
-                &mut runtime.tools,
-                &context,
-                limits,
-                &mut LeaseObserver {
-                    mailbox: self,
-                    lease,
-                    host: &mut runtime.observer,
-                },
-            ),
-            Err(error) => {
-                run.finish(if error == AgentError::Cancelled {
-                    TaskStatus::Cancelled
-                } else {
-                    TaskStatus::Failed
-                })?;
-                drop(run);
-                Err(error)
-            }
-        };
+        let result = host.execute(
+            run,
+            &context,
+            limits,
+            &mut LeaseObserver {
+                mailbox: self,
+                lease,
+                host: &mut namzu_core::NoopObserver,
+            },
+        );
         let delivery = self.ack(lease)?;
         Ok(DeliveryResult {
             message_id: lease.message_id.clone(),
@@ -171,7 +230,7 @@ impl<C: MailboxClock> Mailbox<'_, C> {
         worker: &str,
         parent: &TurnContext,
         budget: BatchBudget,
-        host: &mut impl MailboxHost,
+        host: &mut impl MailboxExecutor,
     ) -> Result<BatchResult, AgentError> {
         budget.validate()?;
         let context = parent.child(budget.total.timeout)?;

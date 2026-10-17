@@ -465,3 +465,49 @@ fn cancellation_during_creation_cleans_new_volume_with_fresh_cleanup_context() {
     assert!(mock.0.lock().unwrap().container.is_none());
     assert_eq!(manager.snapshot().unwrap().unwrap().phase, Phase::Closed);
 }
+
+#[test]
+fn explicit_release_retains_healthy_running_computer_until_owned_cleanup() {
+    let (_root, mock, manager) = setup();
+    let computer = manager.acquire(spec(), &ctx()).unwrap();
+    let tools = GuestTools::new(computer, GuestPolicy::default());
+    let record = tools.into_computer().release(&ctx()).unwrap();
+    assert_eq!(record.phase, Phase::Running);
+    assert!(mock.0.lock().unwrap().container.as_ref().unwrap().running);
+    assert!(mock.0.lock().unwrap().volume.is_some());
+    let computer = manager.resume(&ctx()).unwrap();
+    computer.detach(&ctx()).unwrap();
+    assert!(!mock.0.lock().unwrap().container.as_ref().unwrap().running);
+    manager.recover_cleanup(&ctx()).unwrap();
+    assert!(mock.0.lock().unwrap().container.is_none());
+    assert!(mock.0.lock().unwrap().volume.is_none());
+}
+
+#[test]
+fn persistent_host_guard_preserves_files_and_stops_on_cancelled_setup_or_unwind() {
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(spec(), &ctx()).unwrap();
+    computer.upload("answer", b"keep", &ctx()).unwrap();
+    computer.detach(&ctx()).unwrap();
+    let mut computer = manager.resume(&ctx()).unwrap();
+    computer.preserve_workspace_on_drop();
+    let cancelled = ctx();
+    cancelled.cancellation().cancel();
+    assert_eq!(computer.start(&cancelled), Err(AgentError::Cancelled));
+    drop(computer);
+    assert!(mock.0.lock().unwrap().volume.is_some());
+    let mut computer = manager.resume(&ctx()).unwrap();
+    computer.preserve_workspace_on_drop();
+    computer.start(&ctx()).unwrap();
+    assert_eq!(computer.download("answer", &ctx()).unwrap(), b"keep");
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _lease = computer;
+        panic!("host callback failed");
+    }));
+    assert!(unwind.is_err());
+    let state = mock.0.lock().unwrap();
+    assert!(!state.container.as_ref().unwrap().running);
+    assert_eq!(state.files.get("answer").unwrap(), b"keep");
+    drop(state);
+    manager.recover_cleanup(&ctx()).unwrap();
+}

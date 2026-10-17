@@ -1,6 +1,7 @@
 mod benchmark;
 mod config;
 mod execute;
+mod pals;
 mod tui;
 use clap::{Parser, Subcommand};
 use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn};
@@ -26,6 +27,8 @@ enum Command {
     Exec(Box<execute::ExecArgs>),
     /// Interactive terminal with live Codex text and agent/tool events.
     Tui(Box<tui::TuiArgs>),
+    /// Persistent Pals, bounded teams, mailbox workers and owned computers.
+    Pal(Box<pals::PalArgs>),
     /// List or inspect private sessions. Output may contain private task content.
     Session {
         #[arg(long)]
@@ -251,6 +254,19 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Pal(args) => {
+            return match pals::run(*args, cancellation) {
+                Ok(true) => ExitCode::SUCCESS,
+                Ok(false) => ExitCode::FAILURE,
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Tui(args) => {
             return match tui::run(*args, cancellation) {
                 Ok(()) => ExitCode::SUCCESS,
