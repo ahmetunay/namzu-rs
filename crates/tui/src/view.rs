@@ -171,11 +171,15 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
     };
     frame.render_widget(
         Paragraph::new(format!(
-            "{}{}{}\nSession: {}",
+            "{}{}{}\nSession: {} · history {}/{} B",
             visible(&app.status, 512),
             elapsed,
             stats,
-            visible(app.session_id.as_deref().unwrap_or("new"), 128)
+            visible(app.session_id.as_deref().unwrap_or("new"), 128),
+            app.context_used
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "unknown".into()),
+            app.context_limit
         )),
         areas[2],
     );
@@ -203,7 +207,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
         ));
     }
     frame.render_widget(
-        Paragraph::new("Enter send · F2 newline · F3/F4 tool · Tab expand · PgUp/PgDn scroll · Ctrl-C cancel · Esc exit"),
+        Paragraph::new("Enter send · F2 newline · Tab tool · F5 sessions · F6 settings · Ctrl-C cancel · Esc exit"),
         areas[4],
     );
 }
@@ -240,6 +244,86 @@ pub(crate) fn approval(frame: &mut Frame<'_>, call: &namzu_core::ToolCall, scrol
                 .borders(Borders::ALL)
                 .title("Permission · one call only"),
         ),
+        rect,
+    );
+}
+
+pub(crate) fn sessions(frame: &mut Frame<'_>, items: &[crate::SessionSummary], selected: usize) {
+    use ratatui::{layout::Rect, widgets::Clear};
+    let area = frame.area();
+    let rect = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
+    frame.render_widget(Clear, rect);
+    let height = rect.height.saturating_sub(4) as usize;
+    let offset = selected.saturating_sub(height.saturating_sub(1));
+    let mut lines = vec![
+        "Up/Down choose · Enter view/resume · Esc close".into(),
+        "Only this workspace; failed/interrupted sessions are view-only.".into(),
+    ];
+    if items.is_empty() {
+        lines.push("No saved sessions in this workspace".into());
+    }
+    for (i, item) in items.iter().enumerate().skip(offset).take(height) {
+        lines.push(format!(
+            "{} {} · {} · {}",
+            if i == selected { ">" } else { " " },
+            visible(&item.id, 128),
+            visible(&item.model, 256),
+            visible(&item.status, 32)
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(lines.join("\n")).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Sessions · private workspace history"),
+        ),
+        rect,
+    );
+}
+
+pub(crate) fn settings(frame: &mut Frame<'_>, panel: &crate::host::Panel) {
+    use ratatui::{layout::Rect, widgets::Clear};
+    let area = frame.area();
+    let rect = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
+    frame.render_widget(Clear, rect);
+    let labels = [
+        "Model ID",
+        "Effort (Codex only; empty=default)",
+        "Timeout seconds",
+        "Maximum model steps",
+        "Maximum tool calls",
+        "Conversation byte budget",
+    ];
+    let mut text = format!(
+        "Tab/Up/Down field · Ctrl-U clears · Esc cancels\nEnter applies settings AND starts a new conversation.\nModel ID from `namzu-rs models`; byte budget is not a model token limit.\n{}\n",
+        visible(&panel.error, 512)
+    );
+    for (i, (label, value)) in labels.iter().zip(&panel.fields).enumerate() {
+        text.push_str(&format!(
+            "{} {}: {}\n",
+            if i == panel.selected { ">" } else { " " },
+            label,
+            visible(value, 256)
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(text)
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Model and turn budgets · session-local"),
+            ),
         rect,
     );
 }

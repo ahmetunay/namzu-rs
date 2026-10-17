@@ -13,6 +13,7 @@ fn failed_provisional_text_is_removed_and_uncertain_session_requires_explicit_ne
         error: "truncated stream".into(),
     });
     app.finish(Outcome {
+        context_bytes: None,
         session_id: Some("failed-session".into()),
         error: Some("truncated stream".into()),
     });
@@ -87,6 +88,7 @@ fn accepted_text_replaces_draft_and_tool_preview_cannot_inject_terminal_controls
         },
     });
     app.finish(Outcome {
+        context_bytes: None,
         session_id: Some("completed".into()),
         error: None,
     });
@@ -118,6 +120,7 @@ fn dropping_active_turn_cancels_and_unblocks_a_full_event_channel_then_joins() {
         assert!(child_signal.is_cancelled());
         completed.send(()).unwrap();
         Outcome {
+            context_bytes: None,
             session_id: None,
             error: Some("cancelled".into()),
         }
@@ -194,4 +197,37 @@ fn approval_is_one_shot_and_cancellation_interrupts_permission_wait() {
             }
         );
     }
+}
+
+#[test]
+fn settings_validation_and_history_restore_keep_failed_sessions_blocked() {
+    let mut panel = host::Panel::new(Controls {
+        provider: "codex".into(),
+        model: "fixture".into(),
+        ..Default::default()
+    });
+    panel.fields[2] = "0".into();
+    assert!(panel.parse().is_err());
+    panel.fields[2] = "300".into();
+    panel.fields[1] = "low".into();
+    assert_eq!(panel.parse().unwrap().timeout, 300);
+    panel.fields[5] = "4194305".into();
+    assert!(panel.parse().is_err());
+    let mut app = model::App::new(None);
+    app.load_history(History {
+        id: "s-failed".into(),
+        entries: vec![HistoryEntry {
+            label: "You",
+            content: "saved request".into(),
+            tool_id: None,
+        }],
+        resumable: false,
+        notice: "View only".into(),
+        context_bytes: 200,
+    });
+    assert_eq!(app.entries.front().unwrap().text, "saved request");
+    assert!(app.blocked && app.submit().is_none());
+    assert_eq!(app.context_used, Some(200));
+    app.new_conversation();
+    assert!(!app.blocked && app.session_id.is_none());
 }

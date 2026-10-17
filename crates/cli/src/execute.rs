@@ -38,6 +38,9 @@ pub struct RunOptions {
     pub max_steps: Option<usize>,
     #[arg(long)]
     pub max_tool_calls: Option<usize>,
+    /// Software conversation byte budget, including opaque replay (max 4 MiB).
+    #[arg(long)]
+    pub max_text_bytes: Option<usize>,
     #[arg(long)]
     pub allow_write: bool,
     /// Grant host shell execution, including host files/network outside cwd.
@@ -82,29 +85,7 @@ pub fn execute_observed(
         let state_dir = args.state_dir.clone().unwrap_or(default_state_dir()?);
         let explicit_base_url = args.base_url.is_some();
         let store = PrivateStore::open(&state_dir)?;
-        let mut config = Config::load(&store, args.config.as_deref())?;
-        if let Some(value) = args.model {
-            config.model = Some(value);
-        }
-        if let Some(value) = args.provider {
-            config.provider = value;
-        }
-        if let Some(value) = args.base_url {
-            config.base_url = value;
-        }
-        if let Some(value) = args.api_key_env {
-            config.api_key_env = value;
-        }
-        if let Some(value) = args.timeout {
-            config.timeout = value;
-        }
-        if let Some(value) = args.max_steps {
-            config.max_steps = value;
-        }
-        if let Some(value) = args.max_tool_calls {
-            config.max_tool_calls = value;
-        }
-        config.validate()?;
+        let mut config = config_for(&args, &store)?;
         let model = config.model.clone().ok_or(AgentError::Configuration(
             "model required via --model or selected config",
         ))?;
@@ -192,7 +173,7 @@ pub fn execute_observed(
                     .ok_or(AgentError::Timeout)?,
                 max_steps: config.max_steps,
                 max_tool_calls: config.max_tool_calls,
-                ..Limits::default()
+                max_text_bytes: config.max_text_bytes,
             },
             cancellation,
             &mut PresentationObserver {
@@ -273,4 +254,34 @@ impl namzu_core::Observer for PresentationObserver<'_, '_> {
     fn event(&mut self, event: namzu_core::Event) -> Result<(), AgentError> {
         self.events.emit(event)
     }
+}
+
+pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Config, AgentError> {
+    let mut c = Config::load(store, args.config.as_deref())?;
+    if let Some(v) = &args.model {
+        c.model = Some(v.clone());
+    }
+    if let Some(v) = &args.provider {
+        c.provider = v.clone();
+    }
+    if let Some(v) = &args.base_url {
+        c.base_url = v.clone();
+    }
+    if let Some(v) = &args.api_key_env {
+        c.api_key_env = v.clone();
+    }
+    if let Some(v) = args.timeout {
+        c.timeout = v;
+    }
+    if let Some(v) = args.max_steps {
+        c.max_steps = v;
+    }
+    if let Some(v) = args.max_tool_calls {
+        c.max_tool_calls = v;
+    }
+    if let Some(v) = args.max_text_bytes {
+        c.max_text_bytes = v;
+    }
+    c.validate()?;
+    Ok(c)
 }

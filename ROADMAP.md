@@ -59,7 +59,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | Sıra | Aşama | Bugünkü durum | Bitirme ölçütü |
 | --- | --- | --- | --- |
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
-| 1 | Etkileşimli terminal / TUI | 1.1–1.3 tamam; 1.4 eksik | Akış, onay, iptal, oturum devamı |
+| 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | Eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
@@ -96,7 +96,9 @@ geri gelirse sözleşmesi incelenir; gelmezse yeni sözleşme açıkça belgelen
   96 Rust testi ve altı gerçek PTY senaryosu.
 - **1.3 — Tamamlandı:** CLI izin tavanı içinde tek çağrı onayı/ret, beklerken iptal,
   async HTTP başlık/gövde/SSE iptali ve worker temizliği; 99 test, 13 PTY senaryosu.
-- **1.4** — Oturum seçimi/devamı, model/bağlam/bütçe, terminal geri yükleme.
+- **1.4 — Tamamlandı:** Workspace session seçicisi ve geçmiş, uyumlu/complete
+  session devamı, model/effort ve gerçek SDK bütçeleri, resize/termios/sinyal yaşam
+  döngüsü; 103 Rust testi, 25 PTY senaryosu ve ayrı canlı Codex kabulü.
 
 Kabul: deterministik olay/etkileşim kontrolleri ve gerçek terminal smoke testi;
 terminal kapandığında artık çalışan alt süreç bırakmama.
@@ -193,15 +195,16 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 1.4 — oturum/geçmiş, model/bütçe ve terminal yaşam döngüsü.**
+**Sıradaki iş: 2.1 — çocuk ajan, görev sonucu ve izin/bütçe aktarımı.**
 0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
 katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
 low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında
 çalıştırıldı. Sonuçlar ve karşılaştırma sınırları bench/ACCEPTANCE.md'de.
-Normal testler hâlâ canlı model çağırmaz. TUI 1.1 ile toplam 93 test; format,
-Clippy, release, 5 gerçek PTY kontrolü ve ayrı read-only canlı TUI görevi doğrulandı.
-TUI bütünü bitmedi; 1.2–1.4, Pals/MCP ve diğer ana modüller henüz eksik.
-Kullanıcı 0.2–0.5'in sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
+Normal testler hâlâ canlı model çağırmaz. TUI 1.1–1.4 tamamlandı: 103 test,
+format, Clippy, release, 25 gerçek Linux PTY kontrolü ve ayrı GPT-6-Luna read-only
+canlı görev doğrulandı. Kabul ve sınırlar docs/TUI-ACCEPTANCE.md'de.
+Pals/MCP ve diğer ana modüller henüz eksik. Kullanıcı TUI'nin kalan üç parçasının
+sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi
 

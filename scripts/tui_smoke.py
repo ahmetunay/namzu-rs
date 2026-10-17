@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import shlex
 import struct
 import sys
@@ -128,6 +129,9 @@ class Terminal:
 
     def quit(self):
         self.send(b'\x1b')
+        self.wait_exit()
+
+    def wait_exit(self):
         deadline = time.monotonic() + 15
         while self.status is None and time.monotonic() < deadline:
             self.pump()
@@ -139,8 +143,13 @@ class Terminal:
 
     def close(self):
         if self.status is None:
-            os.kill(self.pid, 9)
-            os.waitpid(self.pid, 0)
+            try: self.send(b'\x1b')
+            except OSError: pass
+            deadline = time.monotonic() + 2
+            while self.status is None and time.monotonic() < deadline: self.pump()
+            if self.status is None:
+                os.kill(self.pid, 9)
+                os.waitpid(self.pid, 0)
         os.close(self.master)
         os.close(self.slave)
 
@@ -176,7 +185,7 @@ class Fixture(http.server.HTTPServer):
                         self.server.stalled = True
                         self.connection.settimeout(15)
                         assert self.connection.recv(1) == b''
-                        self.server.client_closed = True
+                        self.server.client_closed.set()
                         return
                     payload = json.dumps(reply).encode()
                     self.send_response(200)
@@ -185,7 +194,7 @@ class Fixture(http.server.HTTPServer):
                     self.end_headers()
                     self.wfile.write(payload)
                 except BaseException as error:
-                    self.server.errors.append(type(error).__name__)
+                    self.server.errors.append((type(error).__name__, str(error)))
                     self.send_error(500)
 
             def log_message(self, *_):
@@ -194,7 +203,7 @@ class Fixture(http.server.HTTPServer):
         super().__init__(('127.0.0.1', 0), Handler)
         self.requests = []
         self.stalled = False
-        self.client_closed = False
+        self.client_closed = threading.Event()
         self.errors = []
         self.thread = None
 
@@ -235,7 +244,7 @@ def fixture_case(binary, kind):
         state = root / 'state'
 
         def callback(body, index):
-            assert body['model'] == 'fixture'
+            assert body['model'] == ('fixture-next' if kind == 'settings_apply' else 'fixture')
             if kind == 'resume':
                 if index == 0:
                     assert all(t['function']['name'] not in ('shell', 'write_file') for t in body['tools'])
@@ -255,13 +264,29 @@ def fixture_case(binary, kind):
                     return tools([('diff-one', 'diff_file', {'path':'input.txt', 'content':'new\nVISIBLE_DIFF_TAIL\n'})])
                 assert index == 1
                 return answer('PTY_MULTILINE_OK')
-            if kind == 'failure':
+            if kind in ('failure', 'failed_picker'):
                 if index == 0:
                     return answer('UNACCEPTED_OUTPUT', 'length')
                 assert index == 1
                 assert body['messages'] == [{'role': 'user', 'content': 'fresh request'}]
                 return answer('PTY_NEW_OK')
-            if kind.startswith('stall_') or kind == 'exit_stall_body':
+            if kind == 'session_picker':
+                if index == 0: return answer('SAVED_HISTORY')
+                assert index == 1 and body['messages'][-1]['content'] == 'continue saved'
+                assert any(m.get('content') == 'SAVED_HISTORY' for m in body['messages'])
+                return answer('PTY_PICKER_OK')
+            if kind == 'settings_apply':
+                assert index == 0 and body['model'] == 'fixture-next', ('model', body['model'], index)
+                assert body['messages'] == [{'role':'user', 'content':'settings request'}], ('messages', body['messages'])
+                return answer('PTY_SETTINGS_OK')
+            if kind == 'settings_invalid':
+                assert index == 0 and body['model'] == 'fixture'
+                return answer('PTY_SETTINGS_OK')
+            if kind == 'settings_context': raise AssertionError('budget must stop before HTTP')
+            if kind == 'settings_steps':
+                assert index == 0
+                return tools([('read-budget', 'read_file', {'path':'input.txt'})])
+            if kind.startswith('stall_') or kind in ('exit_stall_body', 'sigterm_stall'):
                 return None if kind == 'stall_headers' else 'stall_body'
             if kind.startswith('approval_') or kind == 'policy_ceiling':
                 if index == 0:
@@ -281,33 +306,70 @@ def fixture_case(binary, kind):
         server = Fixture(callback)
         options = setup_args(root, server, 'shell' in kind)
         if kind.startswith('approval_'): options += ['--allow-write']
-        if kind.startswith('stall_') or kind == 'exit_stall_body':
+        if kind.startswith('stall_') or kind in ('exit_stall_body', 'sigterm_stall'):
             options[options.index('--timeout') + 1] = '60'
         terminal = Terminal(binary, options, root)
         server.start()
         try:
             terminal.until(lambda: terminal.contains('Enter a message'))
-            terminal.send(b'first\x1bOQsecond\r' if kind == 'multiline' else b'first request\r')
+            if kind.startswith('settings_'):
+                terminal.send(b'\x1b[17~')
+                terminal.until(lambda: 'Model and turn budgets' in terminal.screen.text())
+                if kind == 'settings_apply':
+                    terminal.send(b'\x15fixture-next\t\t\x1513\t\x1510\t\x152\t\x1516384\r')
+                elif kind == 'settings_invalid':
+                    terminal.send(b'\t\t\x150\r')
+                    terminal.until(lambda: 'timeout 1' in terminal.screen.text())
+                    terminal.send(b'\x1b')
+                elif kind == 'settings_context':
+                    terminal.send(b'\t\t\t\t\t\x151\r')
+                else:
+                    terminal.send(b'\t\t\t\x151\r')
+                terminal.until(lambda: 'Model and turn budgets' not in terminal.screen.text())
+                terminal.send(b'settings request\r')
+            else:
+                terminal.send(b'first\x1bOQsecond\r' if kind == 'multiline' else b'first request\r')
             if kind == 'resume':
                 terminal.until(lambda: completed(state) and terminal.contains('PTY_FIXTURE_OK') and 'Ready' in terminal.screen.text())
                 terminal.send(b'second turn\r')
                 terminal.until(lambda: terminal.contains('PTY_RESUME_OK') and any(
                     any(m.get('content') == 'PTY_RESUME_OK' for m in s['messages']) for s in sessions(state)))
                 assert len(sessions(state)) == 1 and len(server.requests) == 3
+            elif kind == 'session_picker':
+                terminal.until(lambda: completed(state) and terminal.contains('SAVED_HISTORY') and 'Ready' in terminal.screen.text())
+                terminal.send(b'\x0e\x1b[15~')
+                terminal.until(lambda: 'Sessions' in terminal.screen.text())
+                terminal.send(b'\r')
+                terminal.until(lambda: 'SAVED_HISTORY' in terminal.screen.text() and 'Sessions · private' not in terminal.screen.text())
+                terminal.send(b'continue saved\r')
+                terminal.until(lambda: terminal.contains('PTY_PICKER_OK') and 'Ready' in terminal.screen.text())
+                assert len(sessions(state)) == 1 and len(server.requests) == 2
+            elif kind in ('settings_apply', 'settings_invalid'):
+                terminal.until(lambda: completed(state) and terminal.contains('PTY_SETTINGS_OK'))
+                assert len(server.requests) == 1
+            elif kind in ('settings_context', 'settings_steps'):
+                terminal.until(lambda: terminal.contains('Turn failed'))
+                assert terminal.contains('conversation exceeds byte budget' if kind == 'settings_context' else 'step budget exhausted')
+                assert len(server.requests) == (0 if kind == 'settings_context' else 1)
             elif kind == 'multiline':
                 terminal.until(lambda: completed(state) and terminal.contains('PTY_MULTILINE_OK') and 'Ready' in terminal.screen.text())
                 terminal.send(b'\t')
                 terminal.until(lambda: terminal.contains('VISIBLE_DIFF_TAIL'))
                 assert len(server.requests) == 2
-            elif kind.startswith('stall_') or kind == 'exit_stall_body':
+            elif kind.startswith('stall_') or kind in ('exit_stall_body', 'sigterm_stall'):
                 terminal.until(lambda: server.stalled)
+                if kind == 'sigterm_stall':
+                    os.kill(terminal.pid, signal.SIGTERM)
+                    terminal.wait_exit()
+                    assert server.client_closed.wait(3)
+                    return
                 if kind == 'exit_stall_body':
                     terminal.quit()
-                    assert server.client_closed
+                    assert server.client_closed.wait(3)
                     return
                 terminal.send(b'\x03')
                 terminal.until(lambda: terminal.contains('Turn failed'), timeout=5)
-                assert server.client_closed
+                assert server.client_closed.wait(3)
             elif kind.startswith('approval_') or kind == 'policy_ceiling':
                 if kind != 'policy_ceiling':
                     terminal.until(lambda: 'Allow once?' in terminal.screen.text())
@@ -328,11 +390,16 @@ def fixture_case(binary, kind):
                 assert not (root / 'file2.txt').exists()
                 if kind != 'approval_allow': assert not (root / 'file1.txt').exists()
                 if kind == 'policy_ceiling': assert not terminal.contains('Allow once?')
-            elif kind == 'failure':
+            elif kind in ('failure', 'failed_picker'):
                 terminal.until(lambda: terminal.contains('Turn failed'))
                 assert not terminal.contains('UNACCEPTED_OUTPUT')
                 before = sessions(state)
                 assert len(before) == 1 and before[0]['status'] == 'failed'
+                if kind == 'failed_picker':
+                    terminal.send(b'\x1b[15~')
+                    terminal.until(lambda: 'Sessions' in terminal.screen.text())
+                    terminal.send(b'\r')
+                    terminal.until(lambda: 'View only' in terminal.screen.text())
                 terminal.send(b'do not auto replay\r\x0e')
                 terminal.until(lambda: terminal.contains('Enter a message'))
                 terminal.send(b'fresh request\r')
@@ -377,6 +444,37 @@ def demo_case(binary):
             terminal.close()
 
 
+def lifecycle_case(binary, kind):
+    with tempfile.TemporaryDirectory(prefix='namzu-tui-lifecycle-') as directory:
+        terminal = Terminal(binary, ['--demo'], directory)
+        try:
+            terminal.until(lambda: terminal.contains('Enter a message'))
+            if kind in ('settings_cancel', 'sessions_cancel', 'sessions_paste'):
+                terminal.send(b'\x1b[17~' if kind == 'settings_cancel' else b'\x1b[15~')
+                title = 'Model and turn budgets' if kind == 'settings_cancel' else 'Sessions'
+                terminal.until(lambda: title in terminal.screen.text())
+                if kind == 'sessions_paste':
+                    terminal.send(b'\x1b[200~SHOULD_NOT_ENTER\x1b[201~\x1b')
+                    terminal.until(lambda: title not in terminal.screen.text())
+                    assert 'SHOULD_NOT_ENTER' not in terminal.screen.text()
+                terminal.send(b'\x03')
+                terminal.wait_exit()
+            elif kind == 'hup':
+                os.kill(terminal.pid, signal.SIGHUP)
+                terminal.wait_exit()
+            else:
+                fcntl.ioctl(terminal.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 5, 10, 0, 0))
+                os.kill(terminal.pid, signal.SIGWINCH)
+                terminal.until(lambda: 'Terminal' in terminal.screen.text())
+                fcntl.ioctl(terminal.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 28, 100, 0, 0))
+                os.kill(terminal.pid, signal.SIGWINCH)
+                terminal.send(b'after resize\r')
+                terminal.until(lambda: terminal.contains('2 tool calls'))
+                terminal.quit()
+        finally:
+            terminal.close()
+
+
 def live_case(binary, model):
     with tempfile.TemporaryDirectory(prefix='namzu-tui-live-') as directory:
         root = Path(directory)
@@ -402,8 +500,11 @@ def main():
     result = {'demo': 'pending'}
     demo_case(binary)
     result['demo'] = 'passed'
-    for case in ('resume', 'failure', 'multiline', 'cancel_shell', 'exit_shell', 'approval_allow', 'approval_deny', 'approval_cancel', 'policy_ceiling', 'stall_headers', 'stall_body', 'exit_stall_body'):
+    for case in ('resume', 'failure', 'multiline', 'cancel_shell', 'exit_shell', 'approval_allow', 'approval_deny', 'approval_cancel', 'policy_ceiling', 'stall_headers', 'stall_body', 'exit_stall_body', 'session_picker', 'failed_picker', 'settings_apply', 'settings_invalid', 'settings_context', 'settings_steps', 'sigterm_stall'):
         fixture_case(binary, case)
+        result[case] = 'passed'
+    for case in ('resize', 'hup', 'settings_cancel', 'sessions_cancel', 'sessions_paste'):
+        lifecycle_case(binary, case)
         result[case] = 'passed'
     if args.live_model:
         live_case(binary, args.live_model)

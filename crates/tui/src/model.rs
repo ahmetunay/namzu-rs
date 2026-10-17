@@ -41,6 +41,8 @@ pub(crate) struct App {
     pub entries: VecDeque<Entry>,
     pub input: String,
     pub cursor: usize,
+    pub context_used: Option<usize>,
+    pub context_limit: usize,
     pub selected_tool: Option<String>,
     pub started: Option<Instant>,
     pub draft: String,
@@ -58,6 +60,8 @@ impl App {
             entries: VecDeque::new(),
             input: String::new(),
             cursor: 0,
+            context_used: Some(0),
+            context_limit: 4 * 1024 * 1024,
             selected_tool: None,
             started: None,
             draft: String::new(),
@@ -245,6 +249,7 @@ impl App {
     }
     pub fn finish(&mut self, outcome: crate::Outcome) {
         self.busy = false;
+        self.context_used = outcome.context_bytes;
         self.draft.clear();
         if let Some(id) = outcome.session_id {
             self.session_id = Some(id);
@@ -256,6 +261,18 @@ impl App {
         } else {
             self.status = "Ready".into();
         }
+    }
+    pub fn load_history(&mut self, history: crate::History) {
+        *self = Self::new(Some(history.id));
+        for entry in history.entries {
+            self.push(entry.label, &entry.content);
+            if let Some(id) = entry.tool_id {
+                self.entries.back_mut().unwrap().tool_id = Some(id);
+            }
+        }
+        self.context_used = Some(history.context_bytes);
+        self.blocked = !history.resumable;
+        self.status = history.notice;
     }
     pub fn new_conversation(&mut self) {
         if !self.busy {

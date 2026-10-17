@@ -8,5 +8,6 @@
   "max_steps": 64,
   "max_tool_calls": 128,
   "tool_allow": null,
-  "tool_deny": []
+  "tool_deny": [],
+  "max_text_bytes": 4194304
 }

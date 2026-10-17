@@ -76,7 +76,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1 mesaj/olay ekranı hazır; Pals ve MCP henüz yeniden uygulanmadı.
+- TUI 1.1–1.4 tamamlandı; Pals ve MCP henüz yeniden uygulanmadı.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -177,7 +177,7 @@ Hesap/model erişimi, araç döngüsü ve session resume doğrulandı;
 ölçümler ve sınırlar [kabul kaydında](bench/ACCEPTANCE.md).
 Tam sözleşme ve RAM/izin karşılaştırmasının sınırları [bench/README.md](bench/README.md).
 
-## 1.1 — etkileşimli terminal
+## 1 — etkileşimli terminal / TUI
 
 ```sh
 ./target/release/namzu-rs tui --demo
@@ -189,7 +189,10 @@ başarılı session'da devam vardır. Enter gönderir, Ctrl-C turn'ü iptal eder
 Ctrl-N açıkça yeni konuşma başlatır, Esc çıkar. Demo geçici klasörde scripted
 araç döngüsüdür; model/hesap kullanmaz. Pipe için `exec --json` kullanılır.
 İzinler exec ile ortaktır; shell/yazma açık CLI bayrağı ve her çağrıda TUI onayı
-ister. HTTP beklemeleri iptal edilebilir; session/model/bütçe ekranları 1.4'tedir.
+ister. HTTP beklemeleri iptal edilebilir. F5 session/geçmiş seçer; F6 model,
+effort ve süre/adım/araç/konuşma byte bütçesini düzenler. Ayar uygulamak açıkça
+yeni konuşma başlatır; başarısız session yalnızca görüntülenir. 103 Rust testi,
+25 Linux PTY senaryosu ve ayrı canlı Codex görevi geçti.
 [Kullanım ve sınırlar](docs/TUI.md), [kabul kaydı](docs/TUI-ACCEPTANCE.md).
 
 ## Yerel checkpoint ve kurtarma

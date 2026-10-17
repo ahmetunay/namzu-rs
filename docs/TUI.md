@@ -1,4 +1,4 @@
-# Terminal mesaj ekranı — 1.1–1.3
+# Etkileşimli terminal — TUI 1.1–1.4
 
 Native Rust `namzu-tui`, Ratatui/Crossterm ile gerçek terminalde çalışır. Çekirdek
 TUI'ye bağımlı değildir. `exec --json` ve benchmark komutları kullanılmaya devam eder.
@@ -31,23 +31,51 @@ Salt okuma araçları otomatik geçer; tavan dışında kalan araç onayla açı
 | F2 / Alt-Enter | Yeni satır ekle |
 | Oklar / Home / End / Delete | Unicode imleç hareketi ve düzenleme |
 | F3 / F4, Tab | Önceki/sonraki araç kartını seç, ayrıntıyı aç/kapat |
+| F5 | Boştayken bu çalışma alanının özel oturum listesini aç |
+| F6 | Boştayken model/effort ve turn bütçelerini düzenle |
 | Backspace | Son Unicode grapheme'ini sil |
 | PageUp / PageDown | Mesaj geçmişini kaydır |
 | Ctrl-C | Çalışan turn'ü iptal et; boşta ise çık |
 | Ctrl-N | Boştayken açıkça yeni konuşma başlat |
-| Esc | Çık, çalışan turn'ü iptal et ve worker'ı birleştir |
+| Esc | Liste/ayar ekranını kapat; ana ekranda/onayda uygulamadan çık |
 
 Yapıştırılan satır sonları korunur; CRLF normalleştirilir. Editör en fazla beş
 görünür satırla imleci izler. Araç kartı çalışırken durum ve geçen süreyi gösterir;
 sonuç ilk üç satırla özetlenir, Tab ile 64 KiB sınırındaki ayrıntı açılır.
 apply_patch/diff_file sonuçlarında eklenen/silinen/hunk satırları renklendirilir.
 
-Başarılı turn'ler aynı kalıcı session ile devam eder. `--resume ID` tamamlanan
-bir session'ın bağlamını kullanabilir; ilk ekranda eski mesajlar yeniden yüklenmez,
-yalnızca yeni turn'ler gösterilir. Session seçicisi ve geçmiş yükleme 1.4'tedir.
+Başarılı turn'ler aynı kalıcı session ile devam eder. `--resume ID` veya F5 ile
+seçilen session'ın görünür geçmişi yüklenir. F5, özel state dizinindeki son 256
+JSON session adayı içinden aynı canonical çalışma alanına ait kayıtları listeler;
+model ve durumu gösterir. Yukarı/aşağı seçer, Enter geçmişi açar. Tamamlanmış ve
+aynı sağlayıcı/model/endpoint rotasındaki session devam edebilir. Hesap/rota
+SDK tarafından gönderimden önce tekrar doğrulanır. Başka model/rota veya
+failed/running/pending kayıtlar yalnızca görüntülenir; Enter ile devam kapalıdır.
+Opaque replay/system mesajları ekrana taşınmaz; özel session'da kalır.
 Hatalı/iptal edilmiş turn'den sonra Enter kapalıdır: Ctrl-N ile yeni konuşma
 başlatılır. Belirsiz dosya/shell etkisi otomatik tekrarlanmaz. Çökme/hata sonrası
 session durumu, exec'teki özel kayıt ve muhafazakâr resume kurallarına tabidir.
+
+## Model ve bütçe ekranı
+
+F6'da Tab/yukarı/aşağı alan seçer, Ctrl-U alanı temizler. Model ID, Codex effort,
+turn süresi (1–86400 s), sağlayıcı adımı (1–10000), araç çağrısı (0–10000) ve
+konuşma byte bütçesi (1–4194304) düzenlenir. Enter tüm alanları doğrulayıp uygular
+ve **yeni konuşma başlatır**; Esc değişiklikleri atar. Geçersiz ayar mevcut
+seçimleri değiştirmez. Demo'nun sağlayıcısı/ayarları sabittir.
+
+Provider/endpoint, API anahtarı seçicisi ve araç izin tavanı bu panelden
+artırılamaz; bunlar CLI veya açıkça seçilen güvenilir config ile belirlenir.
+Model ID'leri hesabın gerçek kataloğundan seçilir (`namzu-rs models`); panel
+model erişimi hakkında tahmin/ücretli fallback yapmaz. Modelin kabulü gerçek
+istekte sunucu tarafından doğrulanır. Değişiklikler bu TUI sürecine aittir,
+config.json veya eski session'ları yeniden yazmaz.
+
+Alt satır kayıtlı konuşmanın JSON byte boyutunu ve seçilen yazılım byte sınırını
+gösterir. Bu değer modelin token/bağlam penceresi değildir; opaque replay'in
+boyutu da sayılır. CLI `--max-text-bytes` ve config `max_text_bytes` aynı çekirdek
+sınırını seçer. Devam eden turda gösterilen boyut son kayıtlı turn'e aittir;
+başarısız yeni turn için bilinmiyorsa `unknown` gösterilir.
 
 ## Olay ve güvenilirlik sözleşmesi
 
@@ -76,7 +104,9 @@ HTTP istek/başlık/gövde/SSE beklemeleri async transport üzerinden iptal ve d
 ile yarışır; iptalde future düşürülür, kopuk ağ worker'ı bırakılmaz. Proxy/CA ve
 yönlendirme politikası korunur. Onay bekleme süresi turn bütçesine dâhildir.
 OS dosya I/O'su, DNS'in engellenen sistem çağrıları ve SIGKILL için anlık kesilme
-garantisi yoktur. Session seçimi ve kalan terminal yaşam döngüsü 1.4'tedir.
+garantisi yoktur. Resize/küçük terminalden dönüş, SIGINT/SIGTERM/SIGHUP ile
+graceful çıkış ve menü içinden Ctrl-C terminal temizliği desteklenir. SIGKILL
+ve elektrik/host kaybında cleanup çalıştırılamaz.
 
 ## Doğrulama
 
@@ -94,5 +124,6 @@ sonrası ikinci aracın çalışmaması kontrol edilir. Script normalde model ç
 Canlı hesabı açıkça kullanmak için `--live-model GERCEK_MODEL_ID` eklenebilir;
 bu seçeneğin ayrı bir read-only görevi hesap kotası tüketir.
 
-[1.1 kabul kaydı](TUI-ACCEPTANCE.md). TUI modülünün bütünü henüz tamamlanmadı:
-1.1–1.3 tamamlandı; 1.4 oturum/model/bütçe ekranları sıradadır.
+[1.1–1.4 kabul kaydı](TUI-ACCEPTANCE.md). Planlanan ilk TUI modülü tamamlandı.
+Bu sürüm Linux PTY üzerinde doğrulandı; diğer işletim sistemlerinde aynı kabul
+senaryolarının çalıştığı iddia edilmez.

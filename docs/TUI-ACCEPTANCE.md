@@ -1,9 +1,11 @@
-# TUI 1.1 kabul kaydı — 2026-10-17
+# TUI 1.1–1.4 kabul kaydı — 2026-10-17
 
-SDK olay akışı ve native terminal mesaj ekranı yeniden uygulandı. Bu kabul
-TUI'nin dört parçalık planının yalnızca 1.1 teslimidir; Pals/MCP içermez.
+SDK olay akışı ve native terminal mesaj ekranı dört parça halinde yeniden
+uygulandı. Aşağıdaki eski aşama sayıları kendi teslimlerine aittir. Son kaynak
+kabulü: 103 Rust testi, 25 Linux PTY senaryosu, format/Clippy/release ve ayrı
+GPT-6-Luna canlı okuma görevi geçti. TUI planının dört parçası tamam; Pals/MCP içermez.
 
-## Kaynak kontrolleri
+## 1.1 kaynak kontrolleri
 
 - Workspace: **93 test geçti, 0 başarısız, 0 atlandı**.
 - `cargo fmt --all -- --check`: geçti.
@@ -14,7 +16,7 @@ TUI'nin dört parçalık planının yalnızca 1.1 teslimidir; Pals/MCP içermez.
   geçici delta/bozuk batch, SSE metin/reasoning ayrımı, olay teslim süresinin bütçeye
   katılması, Unicode/render, görüntü sınırları ve hata sonrası açık yeni konuşma.
 
-## Optimize binary ile gerçek PTY
+## 1.1 optimize binary ile gerçek PTY
 
 | Kontrol | Sonuç |
 | --- | --- |
@@ -30,7 +32,7 @@ alternate screen'den çıkış ve bracketed paste'in kapanışı kontrol edildi.
 Test metni gerçek VT hücrelerinden okunur; ANSI kaçışlarının ham string eşleşmesine
 dayanmaz. TUI olmayan pipe çağrısının model/state açmadan reddi ayrıca sınandı.
 
-## Canlı Codex kabulü
+## 1.1 canlı Codex kabulü
 
 Önceden yetkilendirilmiş hesaptan GPT-6-Luna (`gpt-6-luna`), low effort ve 60 saniye
 bütçeyle gerçek PTY içinde tek read-only görev çalıştırıldı. Ajan yalnızca read_file
@@ -42,8 +44,8 @@ Token, hesap kimliği, auth/session dosyaları ve ham ekran/model içerikleri bu
 belgeye veya GitHub'a eklenmedi. Bu bir performans karşılaştırması değildir;
 önceki Luna benchmark'ı kendi kaynak commit'i ve raporuyla ayrı tutulur.
 
-Sınırlar ve kullanım: [TUI.md](TUI.md). Özellikle bloklayan HTTP okumasında iptal
-istek deadline'ına kadar bekleyebilir; hızlı iptal ve ayrıntılı onaylar 1.3'tedir.
+1.1 aşamasında bloklayan HTTP okumasında iptal istek deadline'ını bekleyebiliyordu.
+Bu kısıt aşağıdaki 1.3 tesliminde giderildi. Güncel sınırlar: [TUI.md](TUI.md).
 
 ## 1.2 — editör ve araç ayrıntıları
 
@@ -62,3 +64,37 @@ etkinin oluşmadığı kontrol edildi. Async future'ın gerçekten poll edildikt
 sonra iptal edilip düşürüldüğü deterministik bir kanal bariyeriyle de sınandı.
 Core onay hook'u journal ve efekt sınırlarını korur. Önceki 1.1'deki bloklayan
 HTTP iptal kısıtı bu aşamada kaldırıldı; OS/kernel I/O kısıtları geçerlidir.
+
+## 1.4 — oturum, model/bütçe ve terminal yaşam döngüsü
+
+**103 Rust testi**, format, Clippy (`-D warnings`) ve optimize release build geçti.
+**25 gerçek PTY senaryosu** geçti. 1.3'e eklenen kontroller:
+
+- F5 ile kayıtlı geçmişi açıp aynı session'a ikinci mesaj gönderme; önceki cevap
+  gerçek sağlayıcı HTTP isteğinin geçmişinde korundu.
+- Failed session'ı görüntüleyip gönderimin engellenmesi; Ctrl-N açık yeni session.
+- F6 model/bütçe ayarlarını uyguladıktan sonra gerçek HTTP isteğinde yeni model;
+  geçersiz ayarı reddedince önceki modelin korunması.
+- Byte bütçesi küçük seçilince HTTP başlamadan, adım bütçesi 1 seçilince ikinci
+  model isteğinden önce durma. İzinler ayar paneliyle artırılmadı.
+- HTTP gövdesi beklerken SIGTERM; SIGHUP; küçük terminale resize ve geri dönüş;
+  ayar/oturum panelinde Ctrl-C. Menüye yapıştırılan metin ana girişe sızmadı.
+- Her çıkışta termios başlangıç değerleri, alternate screen ve bracketed paste
+  geri yüklendi. Soket kapanışı ayrıca Event bariyeriyle alındı.
+
+Ayrı bir GPT-6-Luna, low effort, 60 saniye read-only gerçek PTY göreviyle yeni
+async HTTP/TUI yolunda dosya aracı, tamamlanan yanıt ve terminal temizliği de
+canlı doğrulandı. Model/hesap erişimi yeniden login istemeden mevcut yetkilendirmeyi
+kullandı. Normal testler canlı kota harcamaz.
+
+TUI ayarları yalnızca süreç içinde tutulur. Session listesi aynı workspace'teki
+son 256 dosya adayıyla sınırlıdır; eski ID `--resume` ile açık seçilebilir.
+Başka rota/hesap otomatik benimsenmez, belirsiz etkiler tekrarlanmaz. OS/kernel
+I/O'su veya SIGKILL için anlık iptal/cleanup garantisi yoktur. Kabul Linux içindir.
+
+| Teslim | Rust testleri | PTY senaryoları | Kaynak commit |
+| --- | --- | --- | --- |
+| 1.1 | 93 | 5 | 91c04d8 |
+| 1.2 | 96 | 6 | a0f681d |
+| 1.3 | 99 | 13 | e66895e |
+| 1.4 | 103 | 25 | Bu kayıtla birlikte yayımlanır |

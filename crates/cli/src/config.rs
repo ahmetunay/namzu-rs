@@ -14,6 +14,7 @@ pub struct Config {
     pub timeout: u64,
     pub max_steps: usize,
     pub max_tool_calls: usize,
+    pub max_text_bytes: usize,
     pub tool_allow: Option<BTreeSet<String>>,
     pub tool_deny: BTreeSet<String>,
 }
@@ -28,6 +29,7 @@ impl Default for Config {
             timeout: 300,
             max_steps: 64,
             max_tool_calls: 128,
+            max_text_bytes: 4 * 1024 * 1024,
             tool_allow: None,
             tool_deny: BTreeSet::new(),
         }
@@ -40,6 +42,7 @@ impl Config {
             || self.max_steps == 0
             || self.max_steps > 10000
             || self.max_tool_calls > 10000
+            || !(1..=4 * 1024 * 1024).contains(&self.max_text_bytes)
             || !["openai-compatible", "codex"].contains(&self.provider.as_str())
             || self
                 .model
