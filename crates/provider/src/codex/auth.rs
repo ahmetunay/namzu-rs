@@ -20,6 +20,8 @@ pub struct Credential {
     version: u32,
     pub(super) access_token: String,
     refresh_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    id_token: Option<String>,
     pub(super) account_id: String,
     expires_ms: u64,
 }
@@ -32,6 +34,10 @@ impl Credential {
             || self.account_id.len() > 256
             || self
                 .refresh_token
+                .as_ref()
+                .is_some_and(|value| value.is_empty() || value.len() > 65536)
+            || self
+                .id_token
                 .as_ref()
                 .is_some_and(|value| value.is_empty() || value.len() > 65536)
             || self.expires_ms == 0
@@ -88,10 +94,22 @@ fn token_credential(body: &Value, previous: Option<&Credential>) -> Result<Crede
         })
         .transpose()?
         .or_else(|| previous.and_then(|old| old.refresh_token.clone()));
+    let id_token = body
+        .get("id_token")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|value| !value.is_empty() && value.len() <= 65536)
+                .map(String::from)
+                .ok_or(AgentError::Protocol("invalid identity token"))
+        })
+        .transpose()?
+        .or_else(|| previous.and_then(|old| old.id_token.clone()));
     let credential = Credential {
         version: 1,
         access_token: token.into(),
         refresh_token: refresh,
+        id_token,
         account_id: account.into(),
         expires_ms,
     };
@@ -117,14 +135,37 @@ pub fn logout(path: &Path) -> Result<(), AgentError> {
     store.remove(FILE)
 }
 
-/// Explicit one-time access-token copy to a NEW private Jcode profile.
+/// Explicit one-time access/identity-token copy to a NEW private Jcode profile.
 /// The refresh grant stays with Namzu, preventing cross-client rotation races.
 pub fn link_jcode(path: &Path, directory: &Path, context: &TurnContext) -> Result<(), AgentError> {
-    let credential = ensure_fresh(path, &Endpoints::production(), &client()?, context)?;
+    link_jcode_at(
+        path,
+        directory,
+        &Endpoints::production(),
+        &client()?,
+        context,
+    )
+}
+pub(super) fn link_jcode_at(
+    path: &Path,
+    directory: &Path,
+    endpoints: &Endpoints,
+    http: &Client,
+    context: &TurnContext,
+) -> Result<(), AgentError> {
     let target = PrivateStore::open(directory)?;
     let _lock = target.lock("namzu-jcode-link")?;
+    if target.read::<Value>("openai-auth.json")?.is_some() {
+        return Err(AgentError::State("Jcode credential store already exists"));
+    }
+    // Jcode identifies ChatGPT mode by a refresh grant OR an identity token.
+    // Old Namzu stores omitted identity tokens; refresh once under our auth lock.
+    let credential = ensure_fresh_for(path, endpoints, http, context, true)?;
+    let id_token = credential.id_token.ok_or(AgentError::State(
+        "identity token missing after refresh; run auth login before linking Jcode",
+    ))?;
     context.remaining()?;
-    target.write_new("openai-auth.json",&json!({"openai_accounts":[{"label":"openai-otter","access_token":credential.access_token,"refresh_token":"","account_id":credential.account_id,"expires_at":credential.expires_ms}],"active_openai_account":"openai-otter"}))
+    target.write_new("openai-auth.json",&json!({"openai_accounts":[{"label":"openai-otter","access_token":credential.access_token,"id_token":id_token,"refresh_token":"","account_id":credential.account_id,"expires_at":credential.expires_ms}],"active_openai_account":"openai-otter"}))
 }
 
 pub(super) fn ensure_fresh(
@@ -133,6 +174,15 @@ pub(super) fn ensure_fresh(
     http: &Client,
     context: &TurnContext,
 ) -> Result<Credential, AgentError> {
+    ensure_fresh_for(path, endpoints, http, context, false)
+}
+fn ensure_fresh_for(
+    path: &Path,
+    endpoints: &Endpoints,
+    http: &Client,
+    context: &TurnContext,
+    require_identity: bool,
+) -> Result<Credential, AgentError> {
     context.remaining()?;
     let store = PrivateStore::open(path)?;
     let _lock = store.lock("codex-auth")?;
@@ -140,7 +190,9 @@ pub(super) fn ensure_fresh(
         .read(FILE)?
         .ok_or(AgentError::State("Codex login required; run auth login"))?;
     current.validate()?;
-    if current.expires_ms.saturating_sub(now_ms()) > 60_000 {
+    if current.expires_ms.saturating_sub(now_ms()) > 60_000
+        && (!require_identity || current.id_token.is_some())
+    {
         return Ok(current);
     }
     let refresh = current.refresh_token.as_ref().ok_or(AgentError::State(
@@ -300,6 +352,7 @@ pub(super) fn fixture_credential(account: &str, expiry: u64) -> Credential {
             URL_SAFE_NO_PAD.encode(claims.to_string())
         ),
         refresh_token: Some("fixture-refresh".into()),
+        id_token: Some("fixture-identity-token".into()),
         account_id: account.into(),
         expires_ms: expiry * 1000,
     }

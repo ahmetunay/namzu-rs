@@ -410,7 +410,7 @@ fn model_catalogue_uses_authenticated_route_and_filters_hidden_models() {
 }
 
 #[test]
-fn explicit_jcode_link_copies_only_access_and_never_overwrites_a_store() {
+fn explicit_jcode_link_copies_identity_but_not_refresh_and_never_overwrites_a_store() {
     let source = tempfile::tempdir().unwrap();
     let target = tempfile::tempdir().unwrap();
     auth::save_fixture(
@@ -422,6 +422,10 @@ fn explicit_jcode_link_copies_only_access_and_never_overwrites_a_store() {
     let value: Value = store.read("openai-auth.json").unwrap().unwrap();
     assert_eq!(value["openai_accounts"][0]["account_id"], "account");
     assert_eq!(value["openai_accounts"][0]["refresh_token"], "");
+    assert_eq!(
+        value["openai_accounts"][0]["id_token"],
+        "fixture-identity-token"
+    );
     assert!(auth::link_jcode(source.path(), target.path(), &context()).is_err());
     let original: Value = namzu_session::PrivateStore::open(source.path())
         .unwrap()
@@ -429,4 +433,62 @@ fn explicit_jcode_link_copies_only_access_and_never_overwrites_a_store() {
         .unwrap()
         .unwrap();
     assert_eq!(original["refresh_token"], "fixture-refresh");
+}
+
+#[test]
+fn jcode_link_migrates_legacy_credentials_via_one_refresh_without_sharing_grant() {
+    let source = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let credential = auth::fixture_credential("account", 4102444800);
+    let mut old = serde_json::to_value(&credential).unwrap();
+    old.as_object_mut().unwrap().remove("id_token");
+    let store = namzu_session::PrivateStore::open(source.path()).unwrap();
+    store.write("codex-credentials.json", &old).unwrap();
+    let token = credential.access_token;
+    let (endpoints, server) = serve(vec![Box::new(move |request| {
+        assert_eq!(request.path, "/oauth/token");
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(body["refresh_token"], "fixture-refresh");
+        (
+            200,
+            "application/json",
+            json!({"access_token":token,
+            "refresh_token":"rotated", "id_token":"real-service-identity-fixture"})
+            .to_string(),
+        )
+    })]);
+    auth::link_jcode_at(
+        source.path(),
+        target.path(),
+        &endpoints,
+        &http(),
+        &context(),
+    )
+    .unwrap();
+    server.join().unwrap();
+    let linked: Value = namzu_session::PrivateStore::open(target.path())
+        .unwrap()
+        .read("openai-auth.json")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        linked["openai_accounts"][0]["id_token"],
+        "real-service-identity-fixture"
+    );
+    assert_eq!(linked["openai_accounts"][0]["refresh_token"], "");
+    let saved: Value = store.read("codex-credentials.json").unwrap().unwrap();
+    assert_eq!(saved["refresh_token"], "rotated");
+    // A second new profile reuses the persisted identity without network access.
+    let next = tempfile::tempdir().unwrap();
+    auth::link_jcode_at(source.path(), next.path(), &endpoints, &http(), &context()).unwrap();
+    assert!(
+        auth::link_jcode_at(
+            source.path(),
+            target.path(),
+            &endpoints,
+            &http(),
+            &context()
+        )
+        .is_err()
+    );
 }

@@ -51,9 +51,12 @@ export JCODE_HOME=/ozel/yeni-jcode-profili
 ./target/release/namzu-rs bench run artifacts/live-suite.json --out artifacts/bench
 ```
 
-`auth link-jcode`, açıkça seçilen YENİ özel profile yalnızca erişim tokenını
+`auth link-jcode`, açıkça seçilen YENİ özel profile erişim ve identity tokenlarını
 kopyalar; mevcut openai-auth.json dosyasının üstüne yazmaz. Refresh grant Namzu'da
 kalır; iki uygulamanın aynı grant'i döndürerek birbirini bozması engellenir.
+Jcode abonelik modunu identity tokenının varlığıyla tanır; refresh grant kopyalanmaz.
+Eski Namzu kayıtlarında identity tokenı yoksa köprü, kendi auth kilidi altında
+bir kez yenileyerek servisten alır ve atomik saklar.
 Bu tek seferlik kopya token süresi dolunca yenilenmez; uzun kullanım için Jcode'a
 ayrı login yap veya yeni profile yeni kopya oluştur. Tokenlar stdout'a, suite'e
 veya GitHub'a yazılmaz. Jcode'un özel secret-store şeması kullanılır.
@@ -73,7 +76,8 @@ bildirdiği arşiv SHA-256 doğrulandı:
 İkili kaynak deposuna eklenmez. Başka bir makinede Jcode'u ayrıca kurmalısın.
 
 Canlı giriş/model doğrulaması tamamlanmadan fixture sonuçlarını canlı
-karşılaştırma diye yayımlama. İlk canlı koşum insan cihaz onayına bağlıdır.
+karşılaştırma diye yayımlama. Cihaz onayı alındı ve native model kataloğuna erişim doğrulandı;
+canlı koşum sonucu ayrı kabul kaydında tutulur.
 
 ## JSON sözleşmesi
 
