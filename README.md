@@ -76,7 +76,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4 tamamlandı; Pals ve MCP henüz yeniden uygulanmadı.
+- TUI 1.1–1.4 ve Pals SDK 2.1 tamamlandı; Pals 2.2–2.6 ve MCP henüz eksik.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -194,6 +194,12 @@ effort ve süre/adım/araç/konuşma byte bütçesini düzenler. Ayar uygulamak 
 yeni konuşma başlatır; başarısız session yalnızca görüntülenir. 103 Rust testi,
 25 Linux PTY senaryosu ve ayrı canlı Codex görevi geçti.
 [Kullanım ve sınırlar](docs/TUI.md), [kabul kaydı](docs/TUI-ACCEPTANCE.md).
+
+## 2 — Pals
+
+Çocuk görevler için `namzu-pals` SDK paketi eklendi (2.1). Dar araç yetkileri,
+ortak rezervasyon bütçesi, parent deadline/iptali ve ayrı görev sonuçları var.
+CLI/TUI Pals komutları 2.6'da bağlanacak. [Sözleşme](docs/PALS.md).
 
 ## Yerel checkpoint ve kurtarma
 

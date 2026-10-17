@@ -1055,6 +1055,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "namzu-pals"
+version = "0.1.0"
+dependencies = [
+ "namzu-core",
+ "namzu-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "namzu-provider"
 version = "0.1.0"
 dependencies = [

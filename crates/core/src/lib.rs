@@ -99,14 +99,33 @@ pub enum AgentError {
 
 /// Shared with provider/tool implementations. Blocking operations must enforce
 /// `remaining()` themselves. Cancellation is checked at every effect boundary.
+#[derive(Default)]
+struct CancellationNode {
+    cancelled: AtomicBool,
+    parent: Option<Arc<CancellationNode>>,
+}
 #[derive(Clone, Default)]
-pub struct Cancellation(Arc<AtomicBool>);
+pub struct Cancellation(Arc<CancellationNode>);
 impl Cancellation {
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
+        self.0.cancelled.store(true, Ordering::Release);
     }
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
+        let mut node = Some(self.0.as_ref());
+        while let Some(current) = node {
+            if current.cancelled.load(Ordering::Acquire) {
+                return true;
+            }
+            node = current.parent.as_deref();
+        }
+        false
+    }
+    /// Downward propagation only; cancelling a child leaves its parent/siblings live.
+    pub fn child(&self) -> Self {
+        Self(Arc::new(CancellationNode {
+            cancelled: AtomicBool::new(false),
+            parent: Some(self.0.clone()),
+        }))
     }
 }
 
@@ -135,6 +154,16 @@ impl TurnContext {
             .checked_duration_since(Instant::now())
             .filter(|d| !d.is_zero())
             .ok_or(AgentError::Timeout)
+    }
+    pub fn cancellation(&self) -> Cancellation {
+        self.cancellation.clone()
+    }
+    /// Preserve the exact parent deadline, including time spent queued/setting up.
+    pub fn child(&self, timeout: Duration) -> Result<Self, AgentError> {
+        self.remaining()?;
+        let mut child = Self::new(timeout, self.cancellation.child())?;
+        child.deadline = child.deadline.min(self.deadline);
+        Ok(child)
     }
 }
 
@@ -261,17 +290,22 @@ pub fn run_history(
     cancellation: Cancellation,
     observer: &mut impl Observer,
 ) -> Result<Turn, AgentError> {
-    let started = Instant::now();
+    let context = TurnContext::new(limits.timeout, cancellation)?;
+    run_history_in_context(provider, tools, messages, limits, &context, observer)
+}
+
+/// Run under an existing deadline/cancellation ceiling, without resetting its clock.
+pub fn run_history_in_context(
+    provider: &mut impl Provider,
+    tools: &mut impl Tools,
+    messages: Vec<Message>,
+    limits: Limits,
+    parent: &TurnContext,
+    observer: &mut impl Observer,
+) -> Result<Turn, AgentError> {
+    let context = parent.child(limits.timeout)?;
     observer.event(Event::TurnStarted)?;
-    let result = run_history_inner(
-        provider,
-        tools,
-        messages,
-        limits,
-        cancellation,
-        observer,
-        started,
-    );
+    let result = run_history_inner(provider, tools, messages, limits, context, observer);
     match &result {
         Ok(turn) => observer.event(Event::TurnCompleted {
             stats: turn.stats.clone(),
@@ -297,22 +331,14 @@ fn run_history_inner(
     tools: &mut impl Tools,
     mut messages: Vec<Message>,
     limits: Limits,
-    cancellation: Cancellation,
+    context: TurnContext,
     observer: &mut impl Observer,
-    started: Instant,
 ) -> Result<Turn, AgentError> {
     if limits.timeout.is_zero() || limits.max_steps == 0 || limits.max_text_bytes == 0 {
         return Err(AgentError::Configuration(
             "positive timeout, steps and text budget required",
         ));
     }
-    let deadline = started
-        .checked_add(limits.timeout)
-        .ok_or(AgentError::Configuration("timeout overflow"))?;
-    let context = TurnContext {
-        deadline,
-        cancellation,
-    };
     let mut remaining_bytes = limits.max_text_bytes;
     let mut account = |bytes: usize| -> Result<(), AgentError> {
         remaining_bytes = remaining_bytes
@@ -485,6 +511,17 @@ impl Provider for ScriptedProvider {
 mod tests {
     use super::*;
     #[test]
+    fn inherited_deadline_is_exact_and_cancellation_is_downward() {
+        let parent = TurnContext::new(Duration::from_secs(30), Cancellation::default()).unwrap();
+        let child = parent.child(Duration::from_secs(300)).unwrap();
+        assert_eq!(parent.deadline, child.deadline);
+        let grandchild = child.child(Duration::from_secs(300)).unwrap();
+        assert_eq!(parent.deadline, grandchild.deadline);
+        child.cancellation().cancel();
+        assert_eq!(grandchild.remaining(), Err(AgentError::Cancelled));
+        assert!(parent.remaining().is_ok());
+    }
+    #[test]
     fn expired_context_returns_timeout_without_racing_a_timer() {
         let context = TurnContext {
             cancellation: Cancellation::default(),
@@ -521,9 +558,11 @@ mod tests {
                 timeout: Duration::from_secs(1),
                 ..Limits::default()
             },
-            Cancellation::default(),
+            TurnContext {
+                cancellation: Cancellation::default(),
+                deadline: Instant::now().checked_sub(Duration::from_secs(2)).unwrap(),
+            },
             &mut NoopObserver,
-            Instant::now().checked_sub(Duration::from_secs(2)).unwrap(),
         );
         assert_eq!(result.unwrap_err(), AgentError::Timeout);
         assert_eq!(provider.0.len(), 1);
