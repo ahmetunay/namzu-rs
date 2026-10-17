@@ -439,7 +439,7 @@ pub fn builtin_task(id: &str) -> Result<Task, AgentError> {
             include_str!("../../../bench/oracles/slug.py"),
         ),
         "intervals" => (
-            "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Reject non-integer endpoints with TypeError and reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
+            "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Endpoints must have exact Python type int: reject bool, float and every other endpoint type with TypeError. Reject reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
             include_str!("../../../bench/oracles/intervals.py"),
         ),
         "toposort" => (

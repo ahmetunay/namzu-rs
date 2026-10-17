@@ -74,9 +74,9 @@
     },
     {
       "id": "intervals",
-      "prompt": "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Reject non-integer endpoints with TypeError and reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
+      "prompt": "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Endpoints must have exact Python type int: reject bool, float and every other endpoint type with TypeError. Reject reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
       "files": {
-        "README.md": "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Reject non-integer endpoints with TypeError and reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
+        "README.md": "Implement solution.py merge_intervals(intervals). Inputs are pairs of integer endpoints [start,end). Endpoints must have exact Python type int: reject bool, float and every other endpoint type with TypeError. Reject reversed endpoints with ValueError. Drop zero-length intervals; sort without mutating input; merge overlapping or touching intervals. Return sorted list of (start,end) tuples. Use only Python standard library.",
         "solution.py": "# Implement the requested function here.\n"
       },
       "expected_files": {},
