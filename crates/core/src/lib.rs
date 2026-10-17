@@ -1,4 +1,6 @@
 //! Provider-independent SDK. No network, shell, credentials or implicit tools.
+mod events;
+pub use events::{Event, EventSink, NoopEvents};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -145,6 +147,24 @@ pub trait Provider {
         tools: &[ToolDefinition],
         context: &TurnContext,
     ) -> Result<Completion, AgentError>;
+
+    /// Streaming is optional. The fallback emits the validated buffered text.
+    fn complete_stream(
+        &mut self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        context: &TurnContext,
+        events: &mut dyn EventSink,
+    ) -> Result<Completion, AgentError> {
+        let response = self.complete(messages, tools, context)?;
+        context.remaining()?;
+        if !response.text.is_empty() {
+            events.emit(Event::AssistantDelta {
+                text: response.text.clone(),
+            })?;
+        }
+        Ok(response)
+    }
 }
 
 pub trait Tools {
@@ -185,6 +205,9 @@ pub struct Turn {
 /// Durable host checkpoint. `pending_call` is saved BEFORE a tool is invoked.
 /// A host must refuse automatic replay after an interrupted/uncertain effect.
 pub trait Observer {
+    fn event(&mut self, _: Event) -> Result<(), AgentError> {
+        Ok(())
+    }
     fn checkpoint(
         &mut self,
         messages: &[Message],
@@ -229,17 +252,57 @@ pub fn run_turn(
 pub fn run_history(
     provider: &mut impl Provider,
     tools: &mut impl Tools,
+    messages: Vec<Message>,
+    limits: Limits,
+    cancellation: Cancellation,
+    observer: &mut impl Observer,
+) -> Result<Turn, AgentError> {
+    let started = Instant::now();
+    observer.event(Event::TurnStarted)?;
+    let result = run_history_inner(
+        provider,
+        tools,
+        messages,
+        limits,
+        cancellation,
+        observer,
+        started,
+    );
+    match &result {
+        Ok(turn) => observer.event(Event::TurnCompleted {
+            stats: turn.stats.clone(),
+        })?,
+        Err(error) => {
+            let _ = observer.event(Event::TurnFailed {
+                error: error.to_string(),
+            });
+        }
+    }
+    result
+}
+
+struct ObserverEvents<'a, T>(&'a mut T);
+impl<T: Observer> EventSink for ObserverEvents<'_, T> {
+    fn emit(&mut self, event: Event) -> Result<(), AgentError> {
+        self.0.event(event)
+    }
+}
+
+fn run_history_inner(
+    provider: &mut impl Provider,
+    tools: &mut impl Tools,
     mut messages: Vec<Message>,
     limits: Limits,
     cancellation: Cancellation,
     observer: &mut impl Observer,
+    started: Instant,
 ) -> Result<Turn, AgentError> {
     if limits.timeout.is_zero() || limits.max_steps == 0 || limits.max_text_bytes == 0 {
         return Err(AgentError::Configuration(
             "positive timeout, steps and text budget required",
         ));
     }
-    let deadline = Instant::now()
+    let deadline = started
         .checked_add(limits.timeout)
         .ok_or(AgentError::Configuration("timeout overflow"))?;
     let context = TurnContext {
@@ -302,7 +365,16 @@ pub fn run_history(
         if names.len() != definitions.len() {
             return Err(AgentError::Configuration("duplicate tool definitions"));
         }
-        let response = provider.complete(&messages, &definitions, &context)?;
+        observer.event(Event::ProviderStarted {
+            step: stats.provider_calls + 1,
+        })?;
+        context.remaining()?;
+        let response = provider.complete_stream(
+            &messages,
+            &definitions,
+            &context,
+            &mut ObserverEvents(observer),
+        )?;
         if let Some(data) = provider.take_state() {
             account(data.to_string().len())?;
             messages.push(Message::ProviderState { data });
@@ -316,6 +388,11 @@ pub fn run_history(
                 tool_calls: vec![],
             });
             observer.checkpoint(&messages, &stats, None)?;
+            observer.event(Event::AssistantMessage {
+                text: response.text.clone(),
+                has_tool_calls: false,
+            })?;
+            context.remaining()?;
             return Ok(Turn {
                 output: response.text,
                 stats,
@@ -339,12 +416,20 @@ pub fn run_history(
             account(call.id.len() + call.name.len() + call.arguments.to_string().len())?;
         }
         messages.push(Message::Assistant {
-            content: response.text,
+            content: response.text.clone(),
             tool_calls: response.tool_calls.clone(),
         });
+        observer.event(Event::AssistantMessage {
+            text: response.text,
+            has_tool_calls: true,
+        })?;
         for call in response.tool_calls {
             context.remaining()?;
             observer.checkpoint(&messages, &stats, Some(&call))?;
+            observer.event(Event::ToolStarted {
+                id: call.id.clone(),
+                name: call.name.clone(),
+            })?;
             context.remaining()?;
             let result = if names.contains(call.name.as_str()) {
                 tools.call(&call, &context)?
@@ -354,12 +439,18 @@ pub fn run_history(
             stats.tool_calls += 1;
             context.remaining()?;
             account(result.content.len())?;
+            let event = Event::ToolFinished {
+                id: call.id.clone(),
+                name: call.name,
+                result: result.clone(),
+            };
             messages.push(Message::Tool {
                 tool_call_id: call.id,
                 content: result.content,
                 is_error: result.is_error,
             });
             observer.checkpoint(&messages, &stats, None)?;
+            observer.event(event)?;
         }
     }
     Err(AgentError::StepLimit)
@@ -391,5 +482,41 @@ mod tests {
             deadline: Instant::now().checked_sub(Duration::from_secs(1)).unwrap(),
         };
         assert_eq!(context.remaining(), Err(AgentError::Timeout));
+    }
+
+    #[test]
+    fn time_spent_delivering_turn_started_is_charged_before_provider_work() {
+        struct NoTools;
+        impl Tools for NoTools {
+            fn definitions(&self) -> Vec<ToolDefinition> {
+                vec![]
+            }
+            fn call(&mut self, _: &ToolCall, _: &TurnContext) -> Result<ToolResult, AgentError> {
+                panic!("no effects after expired event delivery")
+            }
+        }
+        let mut provider = ScriptedProvider(
+            vec![Completion {
+                text: "unused".into(),
+                tool_calls: vec![],
+            }]
+            .into(),
+        );
+        let result = run_history_inner(
+            &mut provider,
+            &mut NoTools,
+            vec![Message::User {
+                content: "test".into(),
+            }],
+            Limits {
+                timeout: Duration::from_secs(1),
+                ..Limits::default()
+            },
+            Cancellation::default(),
+            &mut NoopObserver,
+            Instant::now().checked_sub(Duration::from_secs(2)).unwrap(),
+        );
+        assert_eq!(result.unwrap_err(), AgentError::Timeout);
+        assert_eq!(provider.0.len(), 1);
     }
 }

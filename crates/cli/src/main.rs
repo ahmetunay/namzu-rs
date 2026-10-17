@@ -1,8 +1,9 @@
 mod benchmark;
 mod config;
 mod execute;
+mod tui;
 use clap::{Parser, Subcommand};
-use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn, run_turn};
+use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn};
 use namzu_tools::FileTools;
 use serde_json::json;
 use std::{path::PathBuf, process::ExitCode, time::Instant};
@@ -23,6 +24,8 @@ enum Command {
     },
     /// Run a prompt using a selected provider and private session storage.
     Exec(Box<execute::ExecArgs>),
+    /// Interactive terminal with live Codex text and agent/tool events.
+    Tui(Box<tui::TuiArgs>),
     /// List or inspect private sessions. Output may contain private task content.
     Session {
         #[arg(long)]
@@ -83,7 +86,7 @@ enum AuthAction {
     },
     Status,
     Logout,
-    /// Copy only the current access token to a NEW private Jcode profile.
+    /// Copy access/identity tokens, never the refresh grant, to a NEW Jcode profile.
     LinkJcode {
         #[arg(long)]
         directory: PathBuf,
@@ -170,6 +173,12 @@ fn state_command(
 }
 
 fn offline_demo(cancellation: Cancellation) -> Result<Turn, String> {
+    offline_demo_observed(cancellation, &mut namzu_core::NoopEvents)
+}
+fn offline_demo_observed(
+    cancellation: Cancellation,
+    events: &mut dyn namzu_core::EventSink,
+) -> Result<Turn, String> {
     let root = tempfile::tempdir().map_err(|_| "cannot create demo workspace")?;
     let mut tools = FileTools::new(root.path(), true).map_err(|_| "cannot open demo workspace")?;
     let mut provider = ScriptedProvider(
@@ -197,12 +206,15 @@ fn offline_demo(cancellation: Cancellation) -> Result<Turn, String> {
         ]
         .into(),
     );
-    let result = run_turn(
+    let result = namzu_core::run_history(
         &mut provider,
         &mut tools,
-        "Write and read the known answer 12.",
+        vec![namzu_core::Message::User {
+            content: "Write and read the known answer 12.".into(),
+        }],
         Limits::default(),
         cancellation,
+        &mut DemoObserver(events),
     )
     .map_err(|e| e.to_string())?;
     let content = std::fs::read_to_string(root.path().join("answer.txt"))
@@ -212,6 +224,21 @@ fn offline_demo(cancellation: Cancellation) -> Result<Turn, String> {
         return Err("demo did not satisfy filesystem oracle".into());
     }
     Ok(result)
+}
+
+struct DemoObserver<'a>(&'a mut dyn namzu_core::EventSink);
+impl namzu_core::Observer for DemoObserver<'_> {
+    fn event(&mut self, event: namzu_core::Event) -> Result<(), namzu_core::AgentError> {
+        self.0.emit(event)
+    }
+    fn checkpoint(
+        &mut self,
+        _: &[namzu_core::Message],
+        _: &namzu_core::Stats,
+        _: Option<&ToolCall>,
+    ) -> Result<(), namzu_core::AgentError> {
+        Ok(())
+    }
 }
 
 fn main() -> ExitCode {
@@ -224,6 +251,15 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Tui(args) => {
+            return match tui::run(*args, cancellation) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Bench { action } => {
             return match benchmark::run(action, cancellation) {
                 Ok(()) => ExitCode::SUCCESS,

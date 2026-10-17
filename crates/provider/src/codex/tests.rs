@@ -250,6 +250,55 @@ fn incomplete_or_truncated_sse_never_yields_a_tool_effect() {
 }
 
 #[test]
+fn live_text_deltas_are_provisional_and_exclude_reasoning_and_tool_arguments() {
+    #[derive(Default)]
+    struct Sink(Vec<namzu_core::Event>);
+    impl namzu_core::EventSink for Sink {
+        fn emit(&mut self, event: namzu_core::Event) -> Result<(), AgentError> {
+            self.0.push(event);
+            Ok(())
+        }
+    }
+    let prefix = event(
+        json!({"type":"response.reasoning_summary_text.delta","delta":"private reasoning"}),
+    ) + &event(
+        json!({"type":"response.function_call_arguments.delta","delta":"private arguments"}),
+    ) + &event(json!({"type":"response.output_text.delta","delta":"hello"}));
+    let mut sink = Sink::default();
+    assert!(sse::parse_stream(std::io::Cursor::new(&prefix), &context(), &mut sink).is_err());
+    assert_eq!(
+        sink.0,
+        [namzu_core::Event::AssistantDelta {
+            text: "hello".into()
+        }]
+    );
+    let stream = prefix + &completed(json!([text_item("final response")]));
+    let (answer, _) = sse::parse_stream(
+        std::io::Cursor::new(stream),
+        &context(),
+        &mut Sink::default(),
+    )
+    .unwrap();
+    assert_eq!(answer.text, "final response");
+}
+
+#[test]
+fn disconnected_stream_consumer_prevents_a_completed_response() {
+    struct Disconnected;
+    impl namzu_core::EventSink for Disconnected {
+        fn emit(&mut self, _: namzu_core::Event) -> Result<(), AgentError> {
+            Err(AgentError::Cancelled)
+        }
+    }
+    let stream = event(json!({"type":"response.output_text.delta","delta":"partial"}))
+        + &completed(json!([text_item("final")]));
+    assert_eq!(
+        sse::parse_stream(std::io::Cursor::new(stream), &context(), &mut Disconnected).unwrap_err(),
+        AgentError::Cancelled
+    );
+}
+
+#[test]
 fn finalized_items_fallback_preserves_reasoning_and_function_call_id() {
     let reasoning = json!({"type":"reasoning","id":"r1","encrypted_content":"opaque-fixture"});
     let call = json!({"type":"function_call","id":"item-id","call_id":"call-id","name":"effect","arguments":"{}"});

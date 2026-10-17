@@ -12,6 +12,14 @@ use std::{
 #[derive(Args)]
 pub struct ExecArgs {
     pub prompt: String,
+    #[command(flatten)]
+    pub options: RunOptions,
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Clone)]
+pub struct RunOptions {
     #[arg(long, default_value = ".")]
     pub cwd: PathBuf,
     #[arg(long)]
@@ -47,8 +55,6 @@ pub struct ExecArgs {
     /// Continue a completed session; failed/interrupted sessions cannot auto-replay.
     #[arg(long)]
     pub resume: Option<String>,
-    #[arg(long)]
-    pub json: bool,
 }
 
 pub struct Execution {
@@ -56,6 +62,20 @@ pub struct Execution {
     pub result: Result<Turn, AgentError>,
 }
 pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
+    execute_observed(
+        args.prompt,
+        args.options,
+        cancellation,
+        &mut namzu_core::NoopEvents,
+    )
+}
+
+pub fn execute_observed(
+    prompt: String,
+    args: RunOptions,
+    cancellation: Cancellation,
+    events: &mut dyn namzu_core::EventSink,
+) -> Execution {
     let started = Instant::now();
     let mut session_id = None;
     let result = (|| {
@@ -158,9 +178,7 @@ pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
         )
         .map_err(|_| AgentError::Configuration("cannot open workspace tools"))?;
         let mut messages = session.messages.clone();
-        messages.push(Message::User {
-            content: args.prompt,
-        });
+        messages.push(Message::User { content: prompt });
         session.status = SessionStatus::Running;
         session.save(&store)?;
         let turn = run_history(
@@ -177,9 +195,12 @@ pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
                 ..Limits::default()
             },
             cancellation,
-            &mut Journal {
-                store: &store,
-                session: &mut session,
+            &mut PresentationObserver {
+                journal: Journal {
+                    store: &store,
+                    session: &mut session,
+                },
+                events,
             },
         );
         session.status = if turn.is_ok() {
@@ -204,6 +225,18 @@ impl namzu_core::Provider for Driver {
             Self::Codex(driver) => driver.take_state(),
         }
     }
+    fn complete_stream(
+        &mut self,
+        messages: &[Message],
+        tools: &[namzu_core::ToolDefinition],
+        context: &namzu_core::TurnContext,
+        events: &mut dyn namzu_core::EventSink,
+    ) -> Result<namzu_core::Completion, AgentError> {
+        match self {
+            Self::Api(driver) => driver.complete_stream(messages, tools, context, events),
+            Self::Codex(driver) => driver.complete_stream(messages, tools, context, events),
+        }
+    }
     fn complete(
         &mut self,
         messages: &[Message],
@@ -214,5 +247,23 @@ impl namzu_core::Provider for Driver {
             Self::Api(driver) => driver.complete(messages, tools, context),
             Self::Codex(driver) => driver.complete(messages, tools, context),
         }
+    }
+}
+
+struct PresentationObserver<'a, 'b> {
+    journal: Journal<'a>,
+    events: &'b mut dyn namzu_core::EventSink,
+}
+impl namzu_core::Observer for PresentationObserver<'_, '_> {
+    fn checkpoint(
+        &mut self,
+        messages: &[Message],
+        stats: &namzu_core::Stats,
+        pending: Option<&namzu_core::ToolCall>,
+    ) -> Result<(), AgentError> {
+        namzu_core::Observer::checkpoint(&mut self.journal, messages, stats, pending)
+    }
+    fn event(&mut self, event: namzu_core::Event) -> Result<(), AgentError> {
+        self.events.emit(event)
     }
 }

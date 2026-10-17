@@ -76,7 +76,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI, Pals ve MCP henüz yeniden uygulanmadı.
+- TUI 1.1 mesaj/olay ekranı hazır; Pals ve MCP henüz yeniden uygulanmadı.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -143,8 +143,8 @@ Responses/SSE tamamlanmadan araçlar çalıştırılmaz. Kesik/incomplete/refuse
 yanıtlar başarısızdır. Yerel SSE sınırları: 1 MiB olay/satır, 16 MiB akış,
 4096 output item. Opaque reasoning ve native tool item'ları özel session'a
 kaydedilip yalnızca aynı hesap/model/endpoint ve değişmemiş mesajla yeniden
-gönderilir. Başka sağlayıcının isteklerine eklenmez. TUI'ye canlı token akışı
-henüz yok; bu sürüm SSE'yi tamamlanana kadar tüketir.
+gönderilir. Başka sağlayıcının isteklerine eklenmez. Codex metin delta'ları
+TUI'ye geçici görünüm olarak aktarılır; araçlar hâlâ completed yanıtı bekler.
 
 Model adları `models` yanıtından seçilir; “Luna” diye sabit/tahmini bir ID yoktur.
 Yerel fixture testleri login/poll/exchange, refresh, logout, model listesi,
@@ -176,6 +176,21 @@ vardır. Offline demo model testi değildir: doğru fixture 3/3, no-op 0/3 almal
 Hesap/model erişimi, araç döngüsü ve session resume doğrulandı;
 ölçümler ve sınırlar [kabul kaydında](bench/ACCEPTANCE.md).
 Tam sözleşme ve RAM/izin karşılaştırmasının sınırları [bench/README.md](bench/README.md).
+
+## 1.1 — etkileşimli terminal
+
+```sh
+./target/release/namzu-rs tui --demo
+./target/release/namzu-rs tui --provider codex --model gpt-6-luna --effort low
+```
+
+Native Rust ekranında tek satırlı giriş, Codex yanıt akışı, araç durumları ve
+başarılı session'da devam vardır. Enter gönderir, Ctrl-C turn'ü iptal eder,
+Ctrl-N açıkça yeni konuşma başlatır, Esc çıkar. Demo geçici klasörde scripted
+araç döngüsüdür; model/hesap kullanmaz. Pipe için `exec --json` kullanılır.
+İzinler exec ile ortaktır; shell/yazma açık CLI bayrağı ister. Ayrıntılı onaylar,
+çok satırlı editör ve session seçimi sonraki 1.2–1.4 parçalarıdır.
+[Kullanım ve sınırlar](docs/TUI.md), [93 test + gerçek PTY/canlı kabul](docs/TUI-ACCEPTANCE.md).
 
 ## Yerel checkpoint ve kurtarma
 

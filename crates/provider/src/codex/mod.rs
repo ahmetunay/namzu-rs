@@ -171,6 +171,15 @@ impl Provider for CodexProvider {
         tools: &[ToolDefinition],
         context: &TurnContext,
     ) -> Result<Completion, AgentError> {
+        self.complete_stream(messages, tools, context, &mut namzu_core::NoopEvents)
+    }
+    fn complete_stream(
+        &mut self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        context: &TurnContext,
+        events: &mut dyn namzu_core::EventSink,
+    ) -> Result<Completion, AgentError> {
         self.replay = None;
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
         let route=serde_json::to_string(&json!({"provider":"codex","endpoint":self.endpoints.api.as_str(),"model":self.model,"account":credential.account_id})).map_err(|_|AgentError::Protocol("cannot encode Codex route"))?;
@@ -221,7 +230,7 @@ impl Provider for CodexProvider {
         // Some compatible deployments omit the SSE media type. The bounded
         // parser validates actual SSE and requires a completed response before
         // returning any tool calls; the media type alone is not authoritative.
-        let (completion, items) = sse::parse(BufReader::new(response), context)?;
+        let (completion, items) = sse::parse_stream(BufReader::new(response), context, events)?;
         self.replay = Some(
             json!({"kind":"namzu.codex.responses","route":route,"signature":{"text":completion.text,"tool_calls":completion.tool_calls},"items":items}),
         );

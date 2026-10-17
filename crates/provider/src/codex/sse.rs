@@ -1,10 +1,19 @@
-use namzu_core::{AgentError, Completion, ToolCall, TurnContext};
+use namzu_core::{AgentError, Completion, Event, EventSink, ToolCall, TurnContext};
 use serde_json::Value;
 use std::{collections::BTreeMap, io::BufRead};
 
+#[cfg(test)]
 pub(super) fn parse(
+    reader: impl BufRead,
+    context: &TurnContext,
+) -> Result<(Completion, Vec<Value>), AgentError> {
+    parse_stream(reader, context, &mut namzu_core::NoopEvents)
+}
+
+pub(super) fn parse_stream(
     mut reader: impl BufRead,
     context: &TurnContext,
+    events: &mut dyn EventSink,
 ) -> Result<(Completion, Vec<Value>), AgentError> {
     let mut total = 0;
     let mut data = String::new();
@@ -38,6 +47,13 @@ pub(super) fn parse(
                 .map_err(|_| AgentError::Protocol("invalid Codex SSE JSON"))?;
             data.clear();
             match event["type"].as_str() {
+                Some("response.output_text.delta") => {
+                    let text = event["delta"]
+                        .as_str()
+                        .ok_or(AgentError::Protocol("invalid text delta"))?;
+                    events.emit(Event::AssistantDelta { text: text.into() })?;
+                    context.remaining()?;
+                }
                 Some("response.output_item.done") => {
                     let index = event["output_index"]
                         .as_u64()
