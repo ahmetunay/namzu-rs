@@ -1,4 +1,5 @@
 //! Terminal presentation only. The SDK, providers and durable journal stay outside.
+mod editor;
 mod model;
 mod view;
 use crossterm::{
@@ -173,6 +174,20 @@ pub fn run(
                     KeyCode::PageUp => app.scroll = app.scroll.saturating_add(8),
                     KeyCode::PageDown => app.scroll = app.scroll.saturating_sub(8),
                     KeyCode::Backspace => app.backspace(),
+                    KeyCode::Delete => app.delete(),
+                    KeyCode::Left => app.move_input(editor::Move::Left),
+                    KeyCode::Right => app.move_input(editor::Move::Right),
+                    KeyCode::Home => app.move_input(editor::Move::Home),
+                    KeyCode::End => app.move_input(editor::Move::End),
+                    KeyCode::Up => app.move_input(editor::Move::Up),
+                    KeyCode::Down => app.move_input(editor::Move::Down),
+                    KeyCode::F(2) => app.append_input("\n"),
+                    KeyCode::F(3) => app.select_tool(true),
+                    KeyCode::F(4) => app.select_tool(false),
+                    KeyCode::Tab => app.toggle_tool(),
+                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
+                        app.append_input("\n")
+                    }
                     KeyCode::Enter => {
                         if let Some(prompt) = app.submit() {
                             let cancellation = Cancellation::default();

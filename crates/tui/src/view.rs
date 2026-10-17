@@ -32,6 +32,7 @@ fn wrapped(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+#[cfg(test)]
 fn input_tail(input: &str, width: usize) -> String {
     let mut parts = vec![];
     let mut cells = 0;
@@ -52,11 +53,20 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
         frame.render_widget(Paragraph::new("Terminal too small · Esc exits"), area);
         return;
     }
+    let (input_lines, (cursor_row, cursor_col)) = crate::editor::layout(
+        &app.input,
+        app.cursor.min(app.input.len()),
+        area.width.saturating_sub(4) as usize,
+    );
+    let input_height = input_lines
+        .len()
+        .clamp(1, 5)
+        .min(area.height.saturating_sub(7).max(1) as usize);
     let areas = Layout::vertical([
         Constraint::Length(2),
         Constraint::Min(1),
         Constraint::Length(2),
-        Constraint::Length(3),
+        Constraint::Length(input_height as u16 + 2),
         Constraint::Length(1),
     ])
     .split(area);
@@ -79,8 +89,47 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
             "Error" => Color::Red,
             _ => Color::Yellow,
         };
-        lines.push(Line::styled(entry.label, Style::default().fg(color)));
-        lines.extend(wrapped(&entry.text, width).into_iter().map(Line::raw));
+        let selected = entry.tool_id.is_some() && entry.tool_id == app.selected_tool;
+        let label = if entry.tool_id.is_some() {
+            format!(
+                "{} {} {}",
+                if selected { ">" } else { " " },
+                entry.label,
+                if entry.expanded { "[-]" } else { "[+]" }
+            )
+        } else {
+            entry.label.into()
+        };
+        lines.push(Line::styled(label, Style::default().fg(color)));
+        let count = if entry.tool_id.is_some() && !entry.expanded {
+            3
+        } else {
+            usize::MAX
+        };
+        for (index, line) in entry.text.lines().enumerate() {
+            if index >= count {
+                lines.push(Line::raw("… Tab expands selected tool"));
+                break;
+            }
+            let color = if entry.diff {
+                if line.starts_with("@@") {
+                    Color::Cyan
+                } else if line.starts_with('+') {
+                    Color::Green
+                } else if line.starts_with('-') {
+                    Color::Red
+                } else {
+                    Color::Reset
+                }
+            } else {
+                Color::Reset
+            };
+            lines.extend(
+                wrapped(line, width)
+                    .into_iter()
+                    .map(|line| Line::styled(line, Style::default().fg(color))),
+            );
+        }
         lines.push(Line::raw(""));
     }
     if !app.draft.is_empty() {
@@ -112,31 +161,49 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
             )
         })
         .unwrap_or_default();
+    let elapsed = if app.busy {
+        format!(
+            " · {}s",
+            app.started.map(|i| i.elapsed().as_secs()).unwrap_or(0)
+        )
+    } else {
+        String::new()
+    };
     frame.render_widget(
         Paragraph::new(format!(
-            "{}{}\nSession: {}",
+            "{}{}{}\nSession: {}",
             visible(&app.status, 512),
+            elapsed,
             stats,
             visible(app.session_id.as_deref().unwrap_or("new"), 128)
         )),
         areas[2],
     );
-    let input = input_tail(&app.input, areas[3].width.saturating_sub(5) as usize);
+    let offset = cursor_row.saturating_sub(input_height - 1);
+    let input = input_lines
+        .iter()
+        .skip(offset)
+        .take(input_height)
+        .enumerate()
+        .map(|(i, line)| format!("{}{}", if i + offset == 0 { "> " } else { "  " }, line))
+        .collect::<Vec<_>>()
+        .join("\n");
     frame.render_widget(
-        Paragraph::new(format!("> {input}")).block(
-            Block::default().borders(Borders::ALL).title(if app.busy {
-                "Working"
-            } else {
-                "Message"
-            }),
-        ),
+        Paragraph::new(input).block(Block::default().borders(Borders::ALL).title(if app.busy {
+            "Working"
+        } else {
+            "Message · F2/Alt-Enter newline"
+        })),
         areas[3],
     );
     if !app.busy && !app.blocked {
-        frame.set_cursor_position((areas[3].x + 3 + input.width() as u16, areas[3].y + 1));
+        frame.set_cursor_position((
+            areas[3].x + 3 + cursor_col as u16,
+            areas[3].y + 1 + (cursor_row - offset) as u16,
+        ));
     }
     frame.render_widget(
-        Paragraph::new("Enter send · Ctrl-C cancel · Ctrl-N new · PgUp/PgDn scroll · Esc exit"),
+        Paragraph::new("Enter send · F2 newline · F3/F4 tool · Tab expand · PgUp/PgDn scroll · Ctrl-C cancel · Esc exit"),
         areas[4],
     );
 }

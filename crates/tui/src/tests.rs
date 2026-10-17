@@ -43,7 +43,7 @@ fn unicode_input_and_transcript_are_bounded_and_control_sequences_are_inert() {
     assert!(app.input.len() <= model::INPUT_LIMIT && app.input.is_char_boundary(app.input.len()));
     app.input.clear();
     app.append_input("a\x1b[2J\r\nb\u{202e}");
-    assert!(!app.input.contains(['\x1b', '\r', '\n', '\u{202e}']));
+    assert!(!app.input.contains(['\x1b', '\r', '\u{202e}']));
     for _ in 0..300 {
         app.event(Event::AssistantMessage {
             text: "界".repeat(30000),
@@ -130,4 +130,31 @@ fn dropping_active_turn_cancels_and_unblocks_a_full_event_channel_then_joins() {
     drop(active);
     observed.recv().unwrap();
     assert!(signal.is_cancelled());
+}
+
+#[test]
+fn multiline_insert_delete_and_tool_expansion_keep_exact_content() {
+    let mut app = model::App::new(None);
+    app.append_input("first\nlast");
+    app.move_input(editor::Move::Home);
+    app.append_input("界");
+    app.move_input(editor::Move::Left);
+    app.delete();
+    assert_eq!(app.submit().as_deref(), Some("first\nlast"));
+    app.event(Event::ToolStarted {
+        id: "p".into(),
+        name: "apply_patch".into(),
+    });
+    app.event(Event::ToolFinished {
+        id: "p".into(),
+        name: "apply_patch".into(),
+        result: ToolResult::ok("--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\nEND"),
+    });
+    assert_eq!(
+        app.entries.iter().filter(|e| e.tool_id.is_some()).count(),
+        1
+    );
+    app.toggle_tool();
+    let e = app.entries.back().unwrap();
+    assert!(e.expanded && e.diff && e.text.ends_with("END"));
 }

@@ -44,3 +44,10 @@ belgeye veya GitHub'a eklenmedi. Bu bir performans karşılaştırması değildi
 
 Sınırlar ve kullanım: [TUI.md](TUI.md). Özellikle bloklayan HTTP okumasında iptal
 istek deadline'ına kadar bekleyebilir; hızlı iptal ve ayrıntılı onaylar 1.3'tedir.
+
+## 1.2 — editör ve araç ayrıntıları
+
+96 Rust testi, format, Clippy ve release geçti. Altı gerçek PTY senaryosu geçti;
+yeni senaryoda F2 ile çok satırlı gerçek prompt sunucuya birebir ulaştı ve diff
+kartı Tab ile açılınca son satır göründü. Unicode düzenleme/sarma ve aynı ID'li
+araç kartının sonuçla güncellenmesi ayrıca sınandı. Bu aşamada canlı model çağrılmadı.

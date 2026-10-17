@@ -184,13 +184,13 @@ Tam sözleşme ve RAM/izin karşılaştırmasının sınırları [bench/README.m
 ./target/release/namzu-rs tui --provider codex --model gpt-6-luna --effort low
 ```
 
-Native Rust ekranında tek satırlı giriş, Codex yanıt akışı, araç durumları ve
+Native Rust ekranında çok satırlı Unicode editör, açılabilir araç/diff kartları, Codex yanıt akışı, araç durumları ve
 başarılı session'da devam vardır. Enter gönderir, Ctrl-C turn'ü iptal eder,
 Ctrl-N açıkça yeni konuşma başlatır, Esc çıkar. Demo geçici klasörde scripted
 araç döngüsüdür; model/hesap kullanmaz. Pipe için `exec --json` kullanılır.
 İzinler exec ile ortaktır; shell/yazma açık CLI bayrağı ister. Ayrıntılı onaylar,
-çok satırlı editör ve session seçimi sonraki 1.2–1.4 parçalarıdır.
-[Kullanım ve sınırlar](docs/TUI.md), [93 test + gerçek PTY/canlı kabul](docs/TUI-ACCEPTANCE.md).
+ve session seçimi sonraki 1.3–1.4 parçalarıdır.
+[Kullanım ve sınırlar](docs/TUI.md), [kabul kaydı](docs/TUI-ACCEPTANCE.md).
 
 ## Yerel checkpoint ve kurtarma
 

@@ -59,7 +59,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | Sıra | Aşama | Bugünkü durum | Bitirme ölçütü |
 | --- | --- | --- | --- |
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
-| 1 | Etkileşimli terminal / TUI | 1.1 tamam; 1.2–1.4 eksik | Akış, onay, iptal, oturum devamı |
+| 1 | Etkileşimli terminal / TUI | 1.1–1.2 tamam; 1.3–1.4 eksik | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | Eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
@@ -92,7 +92,8 @@ geri gelirse sözleşmesi incelenir; gelmezse yeni sözleşme açıkça belgelen
   ortak exec/journal/izinler, tek satırlı giriş ve başarılı session devamı.
   93 Rust testi, 5 gerçek PTY senaryosu ve GPT-6-Luna read-only canlı kabul;
   [kabul kaydı](docs/TUI-ACCEPTANCE.md).
-- **1.2** — Çok satırlı giriş, araç ilerlemesi, diff ve çıktı gösterimi.
+- **1.2 — Tamamlandı:** Unicode çok satırlı editör, araç kartları/ayrıntıları, diff renkleri;
+  96 Rust testi ve altı gerçek PTY senaryosu.
 - **1.3** — İzin/onay ekranları, Ctrl-C, turn iptali; iptal sonrası yeni etki yok.
 - **1.4** — Oturum seçimi/devamı, model/bağlam/bütçe, terminal geri yükleme.
 
@@ -191,7 +192,7 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 1.2 — çok satırlı giriş, araç ilerlemesi, diff ve çıktı ayrıntıları.**
+**Sıradaki iş: 1.3 — araç onayları ve hızlı iptal.**
 0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
 katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
 low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında

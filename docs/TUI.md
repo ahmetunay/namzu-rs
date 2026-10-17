@@ -1,4 +1,4 @@
-# 1.1 — terminal mesaj ekranı ve olay akışı
+# Terminal mesaj ekranı — 1.1 ve 1.2
 
 Native Rust `namzu-tui`, Ratatui/Crossterm ile gerçek terminalde çalışır. Çekirdek
 TUI'ye bağımlı değildir. `exec --json` ve benchmark komutları kullanılmaya devam eder.
@@ -24,15 +24,20 @@ etkileşimli araç onayları 1.3'te eklenecek. `--config`, `--state-dir`, `--cwd
 
 | Tuş | Davranış |
 | --- | --- |
-| Enter | Tek satırlı mesajı gönder |
+| Enter | Mesajı gönder |
+| F2 / Alt-Enter | Yeni satır ekle |
+| Oklar / Home / End / Delete | Unicode imleç hareketi ve düzenleme |
+| F3 / F4, Tab | Önceki/sonraki araç kartını seç, ayrıntıyı aç/kapat |
 | Backspace | Son Unicode grapheme'ini sil |
 | PageUp / PageDown | Mesaj geçmişini kaydır |
 | Ctrl-C | Çalışan turn'ü iptal et; boşta ise çık |
 | Ctrl-N | Boştayken açıkça yeni konuşma başlat |
 | Esc | Çık, çalışan turn'ü iptal et ve worker'ı birleştir |
 
-Yapıştırılan satır sonları bu ilk sürümde boşluğa çevrilir. Çok satırlı editör,
-araç çıktısı/diff ayrıntıları ve gelişmiş gezinme 1.2 kapsamındadır.
+Yapıştırılan satır sonları korunur; CRLF normalleştirilir. Editör en fazla beş
+görünür satırla imleci izler. Araç kartı çalışırken durum ve geçen süreyi gösterir;
+sonuç ilk üç satırla özetlenir, Tab ile 64 KiB sınırındaki ayrıntı açılır.
+apply_patch/diff_file sonuçlarında eklenen/silinen/hunk satırları renklendirilir.
 
 Başarılı turn'ler aynı kalıcı session ile devam eder. `--resume ID` tamamlanan
 bir session'ın bağlamını kullanabilir; ilk ekranda eski mesajlar yeniden yüklenmez,
@@ -86,4 +91,4 @@ Canlı hesabı açıkça kullanmak için `--live-model GERCEK_MODEL_ID` eklenebi
 bu seçeneğin ayrı bir read-only görevi hesap kotası tüketir.
 
 [1.1 kabul kaydı](TUI-ACCEPTANCE.md). TUI modülünün bütünü henüz tamamlanmadı:
-1.2 editör/araç ayrıntıları, 1.3 onay/iptal, 1.4 oturum/model/bütçe ekranları sıradadır.
+1.2 editör/araç ayrıntıları tamamlandı; 1.3 onay/iptal ve 1.4 oturum/model/bütçe ekranları sıradadır.

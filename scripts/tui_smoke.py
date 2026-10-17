@@ -235,6 +235,12 @@ def fixture_case(binary, kind):
                 assert any(m.get('content') == 'PTY_FIXTURE_OK' for m in body['messages'])
                 assert body['messages'][-1]['content'] == 'second turn'
                 return answer('PTY_RESUME_OK')
+            if kind == 'multiline':
+                if index == 0:
+                    assert body['messages'][-1]['content'] == 'first\nsecond'
+                    return tools([('diff-one', 'diff_file', {'path':'input.txt', 'content':'new\nVISIBLE_DIFF_TAIL\n'})])
+                assert index == 1
+                return answer('PTY_MULTILINE_OK')
             if kind == 'failure':
                 if index == 0:
                     return answer('UNACCEPTED_OUTPUT', 'length')
@@ -252,13 +258,18 @@ def fixture_case(binary, kind):
         server.start()
         try:
             terminal.until(lambda: terminal.contains('Enter a message'))
-            terminal.send(b'first request\r')
+            terminal.send(b'first\x1bOQsecond\r' if kind == 'multiline' else b'first request\r')
             if kind == 'resume':
                 terminal.until(lambda: completed(state) and terminal.contains('PTY_FIXTURE_OK') and 'Ready' in terminal.screen.text())
                 terminal.send(b'second turn\r')
                 terminal.until(lambda: terminal.contains('PTY_RESUME_OK') and any(
                     any(m.get('content') == 'PTY_RESUME_OK' for m in s['messages']) for s in sessions(state)))
                 assert len(sessions(state)) == 1 and len(server.requests) == 3
+            elif kind == 'multiline':
+                terminal.until(lambda: completed(state) and terminal.contains('PTY_MULTILINE_OK') and 'Ready' in terminal.screen.text())
+                terminal.send(b'\t')
+                terminal.until(lambda: terminal.contains('VISIBLE_DIFF_TAIL'))
+                assert len(server.requests) == 2
             elif kind == 'failure':
                 terminal.until(lambda: terminal.contains('Turn failed'))
                 assert not terminal.contains('UNACCEPTED_OUTPUT')
@@ -331,7 +342,7 @@ def main():
     result = {'demo': 'pending'}
     demo_case(binary)
     result['demo'] = 'passed'
-    for case in ('resume', 'failure', 'cancel_shell', 'exit_shell'):
+    for case in ('resume', 'failure', 'multiline', 'cancel_shell', 'exit_shell'):
         fixture_case(binary, case)
         result[case] = 'passed'
     if args.live_model:

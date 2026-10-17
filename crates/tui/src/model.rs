@@ -1,6 +1,7 @@
+use crate::editor::{self, Move};
 use namzu_core::{Event, Stats};
 use std::collections::VecDeque;
-use unicode_segmentation::UnicodeSegmentation;
+use std::time::Instant;
 
 pub(crate) const INPUT_LIMIT: usize = 16 * 1024;
 const ENTRY_LIMIT: usize = 64 * 1024;
@@ -31,11 +32,17 @@ pub(crate) fn visible(text: &str, limit: usize) -> String {
 pub(crate) struct Entry {
     pub label: &'static str,
     pub text: String,
+    pub tool_id: Option<String>,
+    pub expanded: bool,
+    pub diff: bool,
 }
 
 pub(crate) struct App {
     pub entries: VecDeque<Entry>,
     pub input: String,
+    pub cursor: usize,
+    pub selected_tool: Option<String>,
+    pub started: Option<Instant>,
     pub draft: String,
     pub busy: bool,
     pub blocked: bool,
@@ -50,6 +57,9 @@ impl App {
         Self {
             entries: VecDeque::new(),
             input: String::new(),
+            cursor: 0,
+            selected_tool: None,
+            started: None,
             draft: String::new(),
             busy: false,
             blocked: false,
@@ -68,7 +78,13 @@ impl App {
             text.push_str("\n[display limit]");
         }
         self.bytes += text.len();
-        self.entries.push_back(Entry { label, text });
+        self.entries.push_back(Entry {
+            label,
+            text,
+            tool_id: None,
+            expanded: false,
+            diff: false,
+        });
         while self.bytes > HISTORY_LIMIT || self.entries.len() > 256 {
             if let Some(entry) = self.entries.pop_front() {
                 self.bytes -= entry.text.len();
@@ -79,19 +95,70 @@ impl App {
         if self.busy || self.blocked {
             return;
         }
-        let value = value.replace(['\n', '\r'], " ");
+        let value = value.replace("\r\n", "\n").replace('\r', "\n");
         let remaining = INPUT_LIMIT.saturating_sub(self.input.len());
         let part = visible(&value, remaining);
         if part.len() < value.len() {
             self.status = "Input limit: 16 KiB".into();
         }
-        self.input.push_str(&part);
+        self.cursor = self.cursor.min(self.input.len());
+        self.input.insert_str(self.cursor, &part);
+        self.cursor += part.len();
+    }
+    pub fn move_input(&mut self, direction: Move) {
+        if !self.busy {
+            self.cursor =
+                editor::move_cursor(&self.input, self.cursor.min(self.input.len()), direction);
+        }
     }
     pub fn backspace(&mut self) {
-        if !self.busy
-            && let Some((offset, _)) = self.input.grapheme_indices(true).next_back()
+        if !self.busy {
+            let end = self.cursor.min(self.input.len());
+            let start = editor::move_cursor(&self.input, end, Move::Left);
+            self.input.replace_range(start..end, "");
+            self.cursor = start;
+        }
+    }
+    pub fn delete(&mut self) {
+        if !self.busy {
+            self.cursor = self.cursor.min(self.input.len());
+            let end = editor::move_cursor(&self.input, self.cursor, Move::Right);
+            self.input.replace_range(self.cursor..end, "");
+        }
+    }
+    pub fn select_tool(&mut self, previous: bool) {
+        let ids: Vec<_> = self
+            .entries
+            .iter()
+            .filter_map(|e| e.tool_id.clone())
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let index = self
+            .selected_tool
+            .as_ref()
+            .and_then(|id| ids.iter().position(|v| v == id))
+            .unwrap_or(ids.len() - 1);
+        self.selected_tool = Some(
+            ids[if previous {
+                index.saturating_sub(1)
+            } else {
+                (index + 1).min(ids.len() - 1)
+            }]
+            .clone(),
+        );
+    }
+    pub fn toggle_tool(&mut self) {
+        if self.selected_tool.is_none() {
+            self.selected_tool = self.entries.iter().rev().find_map(|e| e.tool_id.clone());
+        }
+        if let Some(e) = self
+            .entries
+            .iter_mut()
+            .find(|e| e.tool_id == self.selected_tool && e.tool_id.is_some())
         {
-            self.input.truncate(offset);
+            e.expanded = !e.expanded;
         }
     }
     pub fn submit(&mut self) -> Option<String> {
@@ -101,6 +168,9 @@ impl App {
         let prompt = std::mem::take(&mut self.input);
         self.push("You", &prompt);
         self.draft.clear();
+        self.cursor = 0;
+        self.stats = None;
+        self.started = Some(Instant::now());
         self.busy = true;
         self.scroll = 0;
         self.status = "Connecting…".into();
@@ -125,20 +195,43 @@ impl App {
                     self.push("Assistant", &text);
                 }
             }
-            Event::ToolStarted { name, .. } => {
+            Event::ToolStarted { id, name } => {
                 self.status = format!("Tool · {}", visible(&name, 128));
                 self.push("Tool", &format!("{} · running", visible(&name, 128)));
+                self.entries.back_mut().unwrap().tool_id = Some(id.clone());
+                self.selected_tool = Some(id);
             }
-            Event::ToolFinished { name, result, .. } => {
-                self.push(
-                    "Tool",
+            Event::ToolFinished { id, name, result } => {
+                let text = visible(
                     &format!(
                         "{} · {}\n{}",
-                        visible(&name, 128),
+                        name,
                         if result.is_error { "error" } else { "OK" },
-                        visible(&result.content, 240)
+                        result.content
                     ),
+                    ENTRY_LIMIT,
                 );
+                if let Some(e) = self
+                    .entries
+                    .iter_mut()
+                    .find(|e| e.tool_id.as_deref() == Some(&id))
+                {
+                    self.bytes -= e.text.len();
+                    self.bytes += text.len();
+                    e.text = text;
+                    e.diff = name == "apply_patch" || name == "diff_file";
+                } else {
+                    self.push("Tool", &text);
+                    let e = self.entries.back_mut().unwrap();
+                    e.tool_id = Some(id.clone());
+                    e.diff = name == "apply_patch" || name == "diff_file";
+                }
+                while self.bytes > HISTORY_LIMIT {
+                    if let Some(e) = self.entries.pop_front() {
+                        self.bytes -= e.text.len();
+                    }
+                }
+                self.selected_tool = Some(id);
             }
             Event::TurnCompleted { stats } => {
                 self.stats = Some(stats);
