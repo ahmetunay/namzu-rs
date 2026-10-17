@@ -1,8 +1,9 @@
-use super::{Endpoints, client, http_error, read_json};
+use super::{Endpoints, client, read_json};
+use crate::http::Client;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use namzu_core::{AgentError, TurnContext};
 use namzu_session::{PrivateStore, now_ms};
-use reqwest::{blocking::Client, header::HeaderValue};
+use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -198,17 +199,17 @@ fn ensure_fresh_for(
     let refresh = current.refresh_token.as_ref().ok_or(AgentError::State(
         "Codex refresh grant missing; login required",
     ))?;
-    let response = http
-        .post(
+    let response = http.send(
+        http.post(
             endpoints
                 .auth
                 .join("oauth/token")
                 .map_err(|_| AgentError::Configuration("invalid auth endpoint"))?,
         )
         .timeout(context.remaining()?.min(Duration::from_secs(30)))
-        .json(&json!({"grant_type":"refresh_token","refresh_token":refresh,"client_id":CLIENT_ID}))
-        .send()
-        .map_err(http_error)?;
+        .json(&json!({"grant_type":"refresh_token","refresh_token":refresh,"client_id":CLIENT_ID})),
+        context,
+    )?;
     let body = read_json(response, context)?;
     let credential = token_credential(&body, Some(&current))?;
     context.remaining()?;
@@ -241,17 +242,17 @@ pub(super) fn login_with_client(
 ) -> Result<(), AgentError> {
     let store = PrivateStore::open(path)?;
     let _lock = store.lock("codex-auth")?;
-    let response = http
-        .post(
+    let response = http.send(
+        http.post(
             endpoints
                 .auth
                 .join("api/accounts/deviceauth/usercode")
                 .unwrap(),
         )
         .timeout(context.remaining()?.min(Duration::from_secs(30)))
-        .json(&json!({"client_id":CLIENT_ID}))
-        .send()
-        .map_err(http_error)?;
+        .json(&json!({"client_id":CLIENT_ID})),
+        context,
+    )?;
     let body = read_json(response, context)?;
     let device = body["device_auth_id"]
         .as_str()
@@ -280,17 +281,17 @@ pub(super) fn login_with_client(
     on_code(url.as_str(), user_code);
     loop {
         context.remaining()?;
-        let response = http
-            .post(
+        let response = http.send(
+            http.post(
                 endpoints
                     .auth
                     .join("api/accounts/deviceauth/token")
                     .unwrap(),
             )
             .timeout(context.remaining()?.min(Duration::from_secs(30)))
-            .json(&json!({"device_auth_id":device,"user_code":user_code}))
-            .send()
-            .map_err(http_error)?;
+            .json(&json!({"device_auth_id":device,"user_code":user_code})),
+            context,
+        )?;
         if response.status().is_success() {
             let authorization = read_json(response, context)?;
             let code = authorization["authorization_code"]
@@ -306,18 +307,18 @@ pub(super) fn login_with_client(
                 })
                 .ok_or(AgentError::Protocol("invalid authorization verifier"))?;
             let redirect = endpoints.auth.join("deviceauth/callback").unwrap();
-            let response = http
-                .post(endpoints.auth.join("oauth/token").unwrap())
-                .timeout(context.remaining()?.min(Duration::from_secs(30)))
-                .form(&[
-                    ("grant_type", "authorization_code"),
-                    ("code", code),
-                    ("redirect_uri", redirect.as_str()),
-                    ("client_id", CLIENT_ID),
-                    ("code_verifier", verifier),
-                ])
-                .send()
-                .map_err(http_error)?;
+            let response = http.send(
+                http.post(endpoints.auth.join("oauth/token").unwrap())
+                    .timeout(context.remaining()?.min(Duration::from_secs(30)))
+                    .form(&[
+                        ("grant_type", "authorization_code"),
+                        ("code", code),
+                        ("redirect_uri", redirect.as_str()),
+                        ("client_id", CLIENT_ID),
+                        ("code_verifier", verifier),
+                    ]),
+                context,
+            )?;
             let credential = token_credential(&read_json(response, context)?, None)?;
             context.remaining()?;
             return store.write(FILE, &credential);

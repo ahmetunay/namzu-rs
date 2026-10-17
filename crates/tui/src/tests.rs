@@ -109,7 +109,7 @@ fn dropping_active_turn_cancels_and_unblocks_a_full_event_channel_then_joins() {
     let child_signal = signal.clone();
     let (sender, receiver) = mpsc::sync_channel(1);
     let (completed, observed) = mpsc::channel();
-    sender.send(Event::TurnStarted).unwrap();
+    sender.send(UiMessage::Event(Event::TurnStarted)).unwrap();
     let worker = thread::spawn(move || {
         assert_eq!(
             ChannelEvents(sender).emit(Event::ProviderStarted { step: 1 }),
@@ -157,4 +157,41 @@ fn multiline_insert_delete_and_tool_expansion_keep_exact_content() {
     app.toggle_tool();
     let e = app.entries.back().unwrap();
     assert!(e.expanded && e.diff && e.text.ends_with("END"));
+}
+
+#[test]
+fn approval_is_one_shot_and_cancellation_interrupts_permission_wait() {
+    for cancel in [false, true] {
+        let (sender, receiver) = mpsc::sync_channel(64);
+        let signal = Cancellation::default();
+        let worker_signal = signal.clone();
+        let worker = thread::spawn(move || {
+            let context = TurnContext::new(Duration::from_secs(30), worker_signal).unwrap();
+            ChannelEvents(sender).approve(
+                &ToolCall {
+                    id: "x".into(),
+                    name: "shell".into(),
+                    arguments: Default::default(),
+                },
+                &context,
+            )
+        });
+        let UiMessage::Permission(request) = receiver.recv().unwrap() else {
+            panic!("permission expected")
+        };
+        assert_eq!(request.call.name, "shell");
+        if cancel {
+            signal.cancel();
+        } else {
+            request.reply.send(false).unwrap();
+        }
+        assert_eq!(
+            worker.join().unwrap(),
+            if cancel {
+                Err(AgentError::Cancelled)
+            } else {
+                Ok(false)
+            }
+        );
+    }
 }

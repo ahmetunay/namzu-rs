@@ -1,4 +1,4 @@
-use crate::{AgentError, Stats, ToolResult};
+use crate::{AgentError, Stats, ToolCall, ToolResult, TurnContext};
 use serde::{Deserialize, Serialize};
 
 /// Presentation events contain task content, never opaque provider replay state.
@@ -37,6 +37,10 @@ pub enum Event {
 /// A disconnected consumer may stop the turn. Hosts must keep callbacks bounded;
 /// they run synchronously and do not replace durable pre-effect checkpoints.
 pub trait EventSink {
+    /// Host permission decision; must stay inside existing tool-policy ceilings.
+    fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
+        Ok(true)
+    }
     fn emit(&mut self, event: Event) -> Result<(), AgentError>;
 }
 

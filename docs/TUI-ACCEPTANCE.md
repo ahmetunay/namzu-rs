@@ -51,3 +51,14 @@ istek deadline'ına kadar bekleyebilir; hızlı iptal ve ayrıntılı onaylar 1.
 yeni senaryoda F2 ile çok satırlı gerçek prompt sunucuya birebir ulaştı ve diff
 kartı Tab ile açılınca son satır göründü. Unicode düzenleme/sarma ve aynı ID'li
 araç kartının sonuçla güncellenmesi ayrıca sınandı. Bu aşamada canlı model çağrılmadı.
+
+## 1.3 — onay ve hızlı iptal
+
+99 Rust testi, format, Clippy ve release geçti. 13 gerçek PTY senaryosu geçti.
+Yeni kontroller: bir çağrıyı onaylayıp sonraki çağrıyı reddetme, ilk çağrıyı ret,
+onay beklerken iptal, CLI izin tavanını aşan isteğin hiç onay sormadan reddi;
+HTTP başlık/gövde beklerken Ctrl-C ve gövde beklerken Esc. Socket'in kapandığı ve
+etkinin oluşmadığı kontrol edildi. Async future'ın gerçekten poll edildikten
+sonra iptal edilip düşürüldüğü deterministik bir kanal bariyeriyle de sınandı.
+Core onay hook'u journal ve efekt sınırlarını korur. Önceki 1.1'deki bloklayan
+HTTP iptal kısıtı bu aşamada kaldırıldı; OS/kernel I/O kısıtları geçerlidir.

@@ -63,8 +63,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Dosya okuma/yazma 64 KiB, listeleme 512 girdiye sınırlıdır. Mutlak ve `..`
   yollar reddedilir. `cap-std` dosya erişimini kök dizin yeteneğiyle sınırlar;
   bu bir süreç/Docker sandbox'ı değildir.
-- Ctrl-C iptali etki sınırlarında denetlenir. Devam eden bloklayan HTTP isteği
-  hemen kesilmez; kalan turn süresine bağlı HTTP timeout'u ile sonlanır.
+- Ctrl-C iptali etki sınırlarında denetlenir. HTTP başlık/gövde/SSE beklemeleri async transport
+  üzerinden iptal/deadline ile kesilir.
   Dosya sistemi çekirdek çağrılarının kesilmesi garanti edilmez.
 - Araç çağrısı grubu bütçe/ID/argüman yapısı açısından ilk etkiden önce
   denetlenir. Tamamlanan dosya etkileri iptal veya sonraki hatada geri alınmaz.
@@ -188,8 +188,8 @@ Native Rust ekranında çok satırlı Unicode editör, açılabilir araç/diff k
 başarılı session'da devam vardır. Enter gönderir, Ctrl-C turn'ü iptal eder,
 Ctrl-N açıkça yeni konuşma başlatır, Esc çıkar. Demo geçici klasörde scripted
 araç döngüsüdür; model/hesap kullanmaz. Pipe için `exec --json` kullanılır.
-İzinler exec ile ortaktır; shell/yazma açık CLI bayrağı ister. Ayrıntılı onaylar,
-ve session seçimi sonraki 1.3–1.4 parçalarıdır.
+İzinler exec ile ortaktır; shell/yazma açık CLI bayrağı ve her çağrıda TUI onayı
+ister. HTTP beklemeleri iptal edilebilir; session/model/bütçe ekranları 1.4'tedir.
 [Kullanım ve sınırlar](docs/TUI.md), [kabul kaydı](docs/TUI-ACCEPTANCE.md).
 
 ## Yerel checkpoint ve kurtarma

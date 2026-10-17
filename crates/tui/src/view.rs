@@ -208,6 +208,42 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
     );
 }
 
+pub(crate) fn approval(frame: &mut Frame<'_>, call: &namzu_core::ToolCall, scroll: usize) {
+    use ratatui::{layout::Rect, widgets::Clear};
+    let area = frame.area();
+    let rect = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
+    frame.render_widget(Clear, rect);
+    let text = format!(
+        "Allow once? [y] yes / [n] deny\nEsc exits · Ctrl-C cancels · PgUp/PgDn details\n{}{}\n{}",
+        visible(&call.name, 128),
+        if call.name == "shell" {
+            " · HOST filesystem/network access"
+        } else {
+            " · changes files"
+        },
+        visible(&call.arguments.to_string(), 64 * 1024)
+    );
+    let lines = wrapped(&text, rect.width.saturating_sub(2) as usize);
+    let start = scroll.min(
+        lines
+            .len()
+            .saturating_sub(rect.height.saturating_sub(2) as usize),
+    );
+    frame.render_widget(
+        Paragraph::new(lines[start..].join("\n")).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Permission · one call only"),
+        ),
+        rect,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

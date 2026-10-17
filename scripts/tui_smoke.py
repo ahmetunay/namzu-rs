@@ -166,6 +166,18 @@ class Fixture(http.server.HTTPServer):
                     body = json.loads(self.rfile.read(length))
                     reply = callback(body, len(self.server.requests))
                     self.server.requests.append(body)
+                    if reply is None or reply == 'stall_body':
+                        if reply == 'stall_body':
+                            self.send_response(200)
+                            self.send_header('Content-Length', '10000')
+                            self.end_headers()
+                            self.wfile.write(b'{')
+                            self.wfile.flush()
+                        self.server.stalled = True
+                        self.connection.settimeout(15)
+                        assert self.connection.recv(1) == b''
+                        self.server.client_closed = True
+                        return
                     payload = json.dumps(reply).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
@@ -181,6 +193,8 @@ class Fixture(http.server.HTTPServer):
 
         super().__init__(('127.0.0.1', 0), Handler)
         self.requests = []
+        self.stalled = False
+        self.client_closed = False
         self.errors = []
         self.thread = None
 
@@ -247,6 +261,17 @@ def fixture_case(binary, kind):
                 assert index == 1
                 assert body['messages'] == [{'role': 'user', 'content': 'fresh request'}]
                 return answer('PTY_NEW_OK')
+            if kind.startswith('stall_') or kind == 'exit_stall_body':
+                return None if kind == 'stall_headers' else 'stall_body'
+            if kind.startswith('approval_') or kind == 'policy_ceiling':
+                if index == 0:
+                    calls = [('w1', 'write_file', {'path':'file1.txt','content':'approved'})]
+                    if kind == 'approval_allow':
+                        calls += [('w2', 'write_file', {'path':'file2.txt','content':'never approved'})]
+                    return tools(calls)
+                assert index == 1
+                assert json.loads(body['messages'][-1]['content'])['is_error'] is True
+                return answer('PTY_PERMISSION_OK')
             assert kind in ('cancel_shell', 'exit_shell') and index == 0
             command = shlex.join([sys.executable, '-c',
                 'import os,time,pathlib; pathlib.Path("child.pid").write_text(str(os.getpid())); time.sleep(60)'])
@@ -254,7 +279,11 @@ def fixture_case(binary, kind):
                 ('never-run', 'write_file', {'path': 'should-not-exist.txt', 'content': 'bad'})])
 
         server = Fixture(callback)
-        terminal = Terminal(binary, setup_args(root, server, 'shell' in kind), root)
+        options = setup_args(root, server, 'shell' in kind)
+        if kind.startswith('approval_'): options += ['--allow-write']
+        if kind.startswith('stall_') or kind == 'exit_stall_body':
+            options[options.index('--timeout') + 1] = '60'
+        terminal = Terminal(binary, options, root)
         server.start()
         try:
             terminal.until(lambda: terminal.contains('Enter a message'))
@@ -270,6 +299,35 @@ def fixture_case(binary, kind):
                 terminal.send(b'\t')
                 terminal.until(lambda: terminal.contains('VISIBLE_DIFF_TAIL'))
                 assert len(server.requests) == 2
+            elif kind.startswith('stall_') or kind == 'exit_stall_body':
+                terminal.until(lambda: server.stalled)
+                if kind == 'exit_stall_body':
+                    terminal.quit()
+                    assert server.client_closed
+                    return
+                terminal.send(b'\x03')
+                terminal.until(lambda: terminal.contains('Turn failed'), timeout=5)
+                assert server.client_closed
+            elif kind.startswith('approval_') or kind == 'policy_ceiling':
+                if kind != 'policy_ceiling':
+                    terminal.until(lambda: 'Allow once?' in terminal.screen.text())
+                    assert not (root / 'file1.txt').exists()
+                    if kind == 'approval_cancel':
+                        terminal.send(b'\x03')
+                        terminal.until(lambda: terminal.contains('Turn failed'))
+                        assert not (root / 'file1.txt').exists() and len(server.requests) == 1
+                        terminal.quit()
+                        return
+                    terminal.send(b'y' if kind == 'approval_allow' else b'n')
+                    if kind == 'approval_allow':
+                        terminal.until(lambda: 'file2.txt' in terminal.screen.text())
+                        assert (root / 'file1.txt').read_text() == 'approved'
+                        assert not (root / 'file2.txt').exists()
+                        terminal.send(b'n')
+                terminal.until(lambda: completed(state) and terminal.contains('PTY_PERMISSION_OK'))
+                assert not (root / 'file2.txt').exists()
+                if kind != 'approval_allow': assert not (root / 'file1.txt').exists()
+                if kind == 'policy_ceiling': assert not terminal.contains('Allow once?')
             elif kind == 'failure':
                 terminal.until(lambda: terminal.contains('Turn failed'))
                 assert not terminal.contains('UNACCEPTED_OUTPUT')
@@ -282,6 +340,8 @@ def fixture_case(binary, kind):
                 assert len(sessions(state)) == 2 and len(server.requests) == 2
                 assert next(s for s in sessions(state) if s['id'] == before[0]['id']) == before[0]
             else:
+                terminal.until(lambda: 'Allow once?' in terminal.screen.text())
+                terminal.send(b'y')
                 terminal.until(lambda: (root / 'child.pid').exists())
                 child = int((root / 'child.pid').read_text())
                 with contextlib.ExitStack() as cleanup:
@@ -342,7 +402,7 @@ def main():
     result = {'demo': 'pending'}
     demo_case(binary)
     result['demo'] = 'passed'
-    for case in ('resume', 'failure', 'multiline', 'cancel_shell', 'exit_shell'):
+    for case in ('resume', 'failure', 'multiline', 'cancel_shell', 'exit_shell', 'approval_allow', 'approval_deny', 'approval_cancel', 'policy_ceiling', 'stall_headers', 'stall_body', 'exit_stall_body'):
         fixture_case(binary, case)
         result[case] = 'passed'
     if args.live_model:

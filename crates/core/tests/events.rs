@@ -191,3 +191,60 @@ fn provisional_stream_failure_or_invalid_batch_never_commits_an_assistant_or_too
         assert!(!observer.order.borrow().contains(&"effect"));
     }
 }
+
+#[test]
+fn denied_call_is_error_data_without_effect_and_cannot_approve_unknown_tools() {
+    struct Deny(usize);
+    impl Observer for Deny {
+        fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
+            self.0 += 1;
+            Ok(false)
+        }
+        fn checkpoint(
+            &mut self,
+            _: &[Message],
+            _: &Stats,
+            _: Option<&ToolCall>,
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+    let effects = Rc::new(RefCell::new(vec![]));
+    let mut unknown = call();
+    unknown.name = "unavailable".into();
+    unknown.id = "other".into();
+    let mut provider = ScriptedProvider(
+        vec![
+            Completion {
+                text: "".into(),
+                tool_calls: vec![call(), unknown],
+            },
+            Completion {
+                text: "done".into(),
+                tool_calls: vec![],
+            },
+        ]
+        .into(),
+    );
+    let mut observer = Deny(0);
+    let turn = run_history(
+        &mut provider,
+        &mut Effect(effects.clone()),
+        vec![Message::User {
+            content: "test".into(),
+        }],
+        Limits::default(),
+        Cancellation::default(),
+        &mut observer,
+    )
+    .unwrap();
+    assert!(effects.borrow().is_empty());
+    assert_eq!(observer.0, 1);
+    assert_eq!(
+        turn.messages
+            .iter()
+            .filter(|m| matches!(m, Message::Tool { is_error: true, .. }))
+            .count(),
+        2
+    );
+}

@@ -3,10 +3,10 @@ pub mod auth;
 mod sse;
 #[cfg(test)]
 mod tests;
+use crate::http::{Client, Response};
 use namzu_core::{AgentError, Completion, Message, Provider, ToolDefinition, TurnContext};
 use reqwest::{
     Url,
-    blocking::{Client, Response},
     header::{AUTHORIZATION, HeaderValue},
     redirect::Policy,
 };
@@ -54,7 +54,7 @@ fn read_json(response: Response, context: &TurnContext) -> Result<Value, AgentEr
     response
         .take(1024 * 1024 + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| AgentError::Provider("cannot read Codex response".into()))?;
+        .map_err(|_| crate::http::read_error(context))?;
     context.remaining()?;
     if bytes.len() > 1024 * 1024 {
         return Err(AgentError::Protocol("Codex JSON response exceeds 1 MiB"));
@@ -104,27 +104,23 @@ impl CodexProvider {
     }
     pub fn models(&self, context: &TurnContext) -> Result<Value, AgentError> {
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
-        let response = self
-            .request(
+        let response = self.http.send(
+            self.request(
                 self.endpoints
                     .api
                     .join("models?client_version=1.0.0")
                     .unwrap(),
                 &credential,
             )
-            .timeout(context.remaining()?)
-            .send()
-            .map_err(http_error)?;
+            .timeout(context.remaining()?),
+            context,
+        )?;
         let body = read_json(response, context)?;
         let models=body["models"].as_array().ok_or(AgentError::Protocol("missing model catalogue"))?.iter().filter(|model|!matches!(model["visibility"].as_str(),Some("hide"|"hidden")))
             .filter_map(|model|model["slug"].as_str().filter(|slug|!slug.is_empty() && slug.len()<=256).map(|slug|json!({"id":slug,"name":model["display_name"],"reasoning_levels":model["supported_reasoning_levels"],"default_reasoning":model["default_reasoning_level"]}))).collect::<Vec<_>>();
         Ok(json!({"provider":"codex","models":models}))
     }
-    fn request(
-        &self,
-        url: Url,
-        credential: &auth::Credential,
-    ) -> reqwest::blocking::RequestBuilder {
+    fn request(&self, url: Url, credential: &auth::Credential) -> reqwest::RequestBuilder {
         let mut value = HeaderValue::from_str(&format!("Bearer {}", credential.access_token))
             .expect("validated credential");
         value.set_sensitive(true);
@@ -204,9 +200,8 @@ impl Provider for CodexProvider {
             .map_err(http_error)?;
         let mut request = request;
         *request.method_mut() = reqwest::Method::POST;
-        let response = self
-            .http
-            .execute({
+        let response = self.http.execute(
+            {
                 let mut request = request;
                 request.headers_mut().insert(
                     reqwest::header::CONTENT_TYPE,
@@ -219,8 +214,9 @@ impl Provider for CodexProvider {
                 );
                 *request.timeout_mut() = Some(context.remaining()?);
                 request
-            })
-            .map_err(http_error)?;
+            },
+            context,
+        )?;
         if !response.status().is_success() {
             return Err(AgentError::Provider(format!(
                 "Codex HTTP status {}",

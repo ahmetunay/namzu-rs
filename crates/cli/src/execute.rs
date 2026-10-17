@@ -255,6 +255,13 @@ struct PresentationObserver<'a, 'b> {
     events: &'b mut dyn namzu_core::EventSink,
 }
 impl namzu_core::Observer for PresentationObserver<'_, '_> {
+    fn approve(
+        &mut self,
+        call: &namzu_core::ToolCall,
+        context: &namzu_core::TurnContext,
+    ) -> Result<bool, AgentError> {
+        self.events.approve(call, context)
+    }
     fn checkpoint(
         &mut self,
         messages: &[Message],

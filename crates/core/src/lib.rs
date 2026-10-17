@@ -110,6 +110,7 @@ impl Cancellation {
     }
 }
 
+#[derive(Clone)]
 pub struct TurnContext {
     cancellation: Cancellation,
     deadline: Instant,
@@ -205,6 +206,9 @@ pub struct Turn {
 /// Durable host checkpoint. `pending_call` is saved BEFORE a tool is invoked.
 /// A host must refuse automatic replay after an interrupted/uncertain effect.
 pub trait Observer {
+    fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
+        Ok(true)
+    }
     fn event(&mut self, _: Event) -> Result<(), AgentError> {
         Ok(())
     }
@@ -425,13 +429,18 @@ fn run_history_inner(
         })?;
         for call in response.tool_calls {
             context.remaining()?;
+            let approved =
+                !names.contains(call.name.as_str()) || observer.approve(&call, &context)?;
+            context.remaining()?;
             observer.checkpoint(&messages, &stats, Some(&call))?;
             observer.event(Event::ToolStarted {
                 id: call.id.clone(),
                 name: call.name.clone(),
             })?;
             context.remaining()?;
-            let result = if names.contains(call.name.as_str()) {
+            let result = if !approved {
+                ToolResult::error("tool call denied by user")
+            } else if names.contains(call.name.as_str()) {
                 tools.call(&call, &context)?
             } else {
                 ToolResult::error("tool is unavailable")

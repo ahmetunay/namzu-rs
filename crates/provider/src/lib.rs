@@ -1,12 +1,13 @@
 //! Explicit OpenAI-compatible Chat Completions adapter. No automatic login,
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
 pub mod codex;
+mod http;
+use http::Client;
 use namzu_core::{
     AgentError, Completion, Message, Provider, ToolCall, ToolDefinition, TurnContext,
 };
 use reqwest::{
     Url,
-    blocking::Client,
     header::{AUTHORIZATION, HeaderValue},
     redirect::Policy,
 };
@@ -165,20 +166,14 @@ impl Provider for OpenAiCompatible {
         if !tools.is_empty() {
             body["tools"] = Value::Array(tools.iter().map(|tool| json!({"type":"function","function":{"name":tool.name,"description":tool.description,"parameters":tool.parameters}})).collect());
         }
-        let response = self
-            .client
-            .post(self.endpoint.clone())
-            .header(AUTHORIZATION, self.authorization.clone())
-            .timeout(context.remaining()?)
-            .json(&body)
-            .send()
-            .map_err(|error| {
-                if error.is_timeout() {
-                    AgentError::Timeout
-                } else {
-                    AgentError::Provider("HTTP request failed".into())
-                }
-            })?;
+        let response = self.client.send(
+            self.client
+                .post(self.endpoint.clone())
+                .header(AUTHORIZATION, self.authorization.clone())
+                .timeout(context.remaining()?)
+                .json(&body),
+            context,
+        )?;
         context.remaining()?;
         if !response.status().is_success() {
             return Err(AgentError::Provider(format!(
@@ -190,7 +185,7 @@ impl Provider for OpenAiCompatible {
         response
             .take(MAX_BODY + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| AgentError::Provider("cannot read response".into()))?;
+            .map_err(|_| http::read_error(context))?;
         context.remaining()?;
         if bytes.len() as u64 > MAX_BODY {
             return Err(AgentError::Protocol("HTTP response exceeds 4 MiB"));

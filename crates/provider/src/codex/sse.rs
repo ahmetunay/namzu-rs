@@ -23,7 +23,7 @@ pub(super) fn parse_stream(
         let mut line = vec![];
         let count = std::io::Read::take(&mut reader, 1024 * 1024 + 1)
             .read_until(b'\n', &mut line)
-            .map_err(|_| AgentError::Provider("cannot read Codex SSE stream".into()))?;
+            .map_err(|_| crate::http::read_error(context))?;
         if count == 0 {
             return Err(AgentError::Protocol(
                 "Codex stream ended without completed response",

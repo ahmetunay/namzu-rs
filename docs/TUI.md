@@ -1,4 +1,4 @@
-# Terminal mesaj ekranı — 1.1 ve 1.2
+# Terminal mesaj ekranı — 1.1–1.3
 
 Native Rust `namzu-tui`, Ratatui/Crossterm ile gerçek terminalde çalışır. Çekirdek
 TUI'ye bağımlı değildir. `exec --json` ve benchmark komutları kullanılmaya devam eder.
@@ -16,8 +16,11 @@ konuşma kaydetmez. Girilen mesaj demo çözümünü değiştirmez. Gerçek mode
 
 Varsayılan araçlar salt okunurdur. `--allow-write`, `--allow-shell`,
 `--tool-allow`, `--tool-deny` exec ile aynı şekilde uygulanır. Shell, host dosya
-ve ağına erişim iznidir; OS sandbox'ı değildir. TUI yeni yetki vermez; ayrıntılı
-etkileşimli araç onayları 1.3'te eklenecek. `--config`, `--state-dir`, `--cwd`,
+ve ağına erişim iznidir; OS sandbox'ı değildir. TUI yeni yetki vermez. İzin tavanı içindeki write_file/apply_patch/shell çağrıları
+her defasında y/n ile tek seferlik onay ister. n, modele araç hatası olarak döner;
+Ctrl-C turn'ü iptal eder, Esc uygulamadan çıkar. Onaylar oturuma kaydedilmez.
+Salt okuma araçları otomatik geçer; tavan dışında kalan araç onayla açılamaz.
+64 KiB'den büyük onay argümanları gösterilmeden reddedilir. `--config`, `--state-dir`, `--cwd`,
 `--timeout`, adım/araç bütçeleri ve `--resume` ortak çalıştırma yolunu kullanır.
 
 ## Tuşlar ve konuşma
@@ -69,10 +72,11 @@ session durumu, exec'teki özel kayıt ve muhafazakâr resume kurallarına tabid
   ve Ctrl-C/Esc akışlarında raw mode, cursor, alternate screen ve bracketed paste
   geri yüklenir. Worker bırakılmaz; süreç grubu temizliği mevcut supervisor'dadır.
 
-Devam eden bloklayan HTTP okuması anında kesilemeyebilir. Esc terminali önce geri
-yükler, sonra iptal/worker temizliğini bekler; istek kendi kalan turn deadline'ıyla
-sonlanır (varsayılan 300 saniye). Çökme/SIGKILL/çekirdek I/O için garanti verilmez.
-Tam onay/sinyal/hızlı iptal akışı 1.3; kapsamlı terminal/session yaşam döngüsü 1.4'tür.
+HTTP istek/başlık/gövde/SSE beklemeleri async transport üzerinden iptal ve deadline
+ile yarışır; iptalde future düşürülür, kopuk ağ worker'ı bırakılmaz. Proxy/CA ve
+yönlendirme politikası korunur. Onay bekleme süresi turn bütçesine dâhildir.
+OS dosya I/O'su, DNS'in engellenen sistem çağrıları ve SIGKILL için anlık kesilme
+garantisi yoktur. Session seçimi ve kalan terminal yaşam döngüsü 1.4'tedir.
 
 ## Doğrulama
 
@@ -91,4 +95,4 @@ Canlı hesabı açıkça kullanmak için `--live-model GERCEK_MODEL_ID` eklenebi
 bu seçeneğin ayrı bir read-only görevi hesap kotası tüketir.
 
 [1.1 kabul kaydı](TUI-ACCEPTANCE.md). TUI modülünün bütünü henüz tamamlanmadı:
-1.2 editör/araç ayrıntıları tamamlandı; 1.3 onay/iptal ve 1.4 oturum/model/bütçe ekranları sıradadır.
+1.1–1.3 tamamlandı; 1.4 oturum/model/bütçe ekranları sıradadır.
