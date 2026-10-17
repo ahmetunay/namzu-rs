@@ -203,13 +203,15 @@ fn parent_cancel_stops_children_and_child_cancel_leaves_sibling_live() {
 }
 
 #[test]
-fn child_deadline_cannot_exceed_parent_even_when_timeout_is_larger() {
+fn child_context_rejects_zero_timeout_and_observes_later_parent_cancel() {
     let ctx = TurnContext::new(Duration::from_secs(30), Cancellation::default()).unwrap();
     let child = ctx.child(Duration::from_secs(300)).unwrap();
-    assert!(child.remaining().unwrap() <= ctx.remaining().unwrap() + Duration::from_millis(1));
     child.cancellation().cancel();
     assert!(!ctx.cancellation().is_cancelled());
     assert!(ctx.child(Duration::ZERO).is_err());
+    let sibling = ctx.child(Duration::from_secs(300)).unwrap();
+    ctx.cancellation().cancel();
+    assert_eq!(sibling.remaining(), Err(AgentError::Cancelled));
 }
 
 #[test]

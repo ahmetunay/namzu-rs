@@ -1,8 +1,12 @@
 //! Explicit child-agent SDK. No implicit provider, credentials, shell or global state.
+mod registry;
 mod team;
 use namzu_core::{
     AgentError, Limits, Message, Observer, Provider, ToolCall, ToolDefinition, ToolResult, Tools,
     Turn, TurnContext, run_history_in_context,
+};
+pub use registry::{
+    PalCreate, PalDefinition, PalRun, PalStatus, PalUpdate, Registry, TaskRecord, TaskStatus,
 };
 use std::{
     collections::BTreeSet,

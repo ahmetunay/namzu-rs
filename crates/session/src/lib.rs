@@ -56,6 +56,75 @@ pub struct PrivateStore {
     dir: Dir,
 }
 impl PrivateStore {
+    /// Capability-relative private child, rejecting symlink leaves.
+    pub fn child(&self, name: &str) -> Result<Self, AgentError> {
+        self.child_inner(name, true)
+    }
+    /// Existing child only: a missing workspace/state directory is not recreated.
+    pub fn open_child(&self, name: &str) -> Result<Self, AgentError> {
+        self.child_inner(name, false)
+    }
+    fn child_inner(&self, name: &str, create: bool) -> Result<Self, AgentError> {
+        if !name_valid(name) {
+            return Err(AgentError::State("invalid private directory name"));
+        }
+        let mut builder = cap_std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use cap_std::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        if create {
+            match self.dir.create_dir_with(name, &builder) {
+                Ok(()) => self
+                    .dir
+                    .open(".")
+                    .and_then(|d| d.sync_all())
+                    .map_err(|_| AgentError::State("cannot sync private directory"))?,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(_) => return Err(AgentError::State("cannot create private directory")),
+            }
+        }
+        let mut options = Self::options();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use cap_std::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_NONBLOCK);
+        }
+        if self
+            .dir
+            .symlink_metadata(name)
+            .map_err(|_| AgentError::State("cannot inspect private directory"))?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(AgentError::State("private directory cannot be a symlink"));
+        }
+        let file = self
+            .dir
+            .open_with(name, &options)
+            .map_err(|_| AgentError::State("cannot open private directory"))?
+            .into_std();
+        let metadata = file
+            .metadata()
+            .map_err(|_| AgentError::State("cannot inspect private directory"))?;
+        if !metadata.is_dir() {
+            return Err(AgentError::State("private directory required"));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
+                return Err(AgentError::State(
+                    "private directory must be owned and mode 0700",
+                ));
+            }
+        }
+        Ok(Self {
+            dir: Dir::from_std_file(file),
+        })
+    }
     pub fn open(path: impl AsRef<Path>) -> Result<Self, AgentError> {
         let path = path.as_ref();
         let mut builder = std::fs::DirBuilder::new();

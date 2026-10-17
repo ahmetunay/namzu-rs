@@ -1059,6 +1059,7 @@ name = "namzu-pals"
 version = "0.1.0"
 dependencies = [
  "namzu-core",
+ "namzu-session",
  "namzu-tools",
  "serde",
  "serde_json",

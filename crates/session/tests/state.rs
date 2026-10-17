@@ -3,6 +3,41 @@ use namzu_session::*;
 use serde_json::json;
 
 #[test]
+fn private_child_is_capability_relative_and_open_does_not_recreate() {
+    let root = tempfile::tempdir().unwrap();
+    let store = PrivateStore::open(root.path()).unwrap();
+    assert!(store.open_child("missing").is_err());
+    assert!(!root.path().join("missing").exists());
+    assert!(store.child("../outside").is_err());
+    let child = store.child("child").unwrap();
+    child.write("record.json", &json!({"v":1})).unwrap();
+    assert_eq!(
+        store
+            .open_child("child")
+            .unwrap()
+            .read::<serde_json::Value>("record.json")
+            .unwrap()
+            .unwrap()["v"],
+        1
+    );
+    assert!(store.open_child("child/record.json").is_err());
+    assert!(child.open_child("record.json").is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        symlink("child", root.path().join("link")).unwrap();
+        assert!(store.child("link").is_err());
+        assert!(store.open_child("link").is_err());
+        std::fs::set_permissions(
+            root.path().join("child"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        assert!(store.open_child("child").is_err());
+    }
+}
+
+#[test]
 fn private_atomic_roundtrip_and_lock_contention() {
     let root = tempfile::tempdir().unwrap();
     let store = PrivateStore::open(root.path()).unwrap();
