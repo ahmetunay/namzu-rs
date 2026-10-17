@@ -10,12 +10,27 @@ bu yeni depoda tamamlanmış uygulama anlamına gelmez.
 - [x] Deterministik sağlayıcı ile araç çağrısı döngüsü
 - [x] Sınırlı dosya araçları, terminal komutu ve JSON çıktı sözleşmesi
 - [x] Süre (varsayılan 300 saniye), adım ve araç çağrısı bütçeleri
-- [ ] Test/Clippy/format/release doğrulaması
+- [x] 34 test; Clippy (uyarılar hata); format; release derlemesi ve release demo
 - [ ] Uzak, özel Git deposuna doğrulanmış yedek
 
 İlk sürüm OpenAI uyumlu Chat Completions adaptörü içerir. Yerel HTTP fixture
 ile CLI → sağlayıcı → dosya aracı → sağlayıcı sonucu zinciri sınandı.
 Codex abonelik girişi ve eski benchmark script uyumu henüz yoktur.
+
+## Doğrulanan ilk aşama — 2026-10-17
+
+- CLI: 3 süreç testi + 2 gerçek loopback HTTP testi.
+- Core: 1 deterministik deadline testi + 13 ajan döngüsü/bütçe/iptal testi.
+- Sağlayıcı: 6 protokol/URL/anahtar redaksiyonu testi.
+- Dosyalar: 9 yetenek sınırı/symlink/readonly/boyut/FIFO testi.
+- `cargo test --workspace --locked`: 34 geçti, 0 başarısız, 0 atlandı.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: geçti.
+- `cargo fmt --all -- --check`: geçti.
+- `cargo build --release --workspace --locked`: geçti.
+- Release `demo --json`: çıktı 12, 3 scripted sağlayıcı adımı, 2 dosya çağrısı.
+- Harici model çağrısı: 0. Gerçek sağlayıcı hesabı/kota doğrulanmadı.
+- Checkpoint bundle'ından geçici dizine clone sonrası Git kaynak ağacı
+  eşitliği doğrulandı. Dış GitHub yedeği henüz yok; hedef depo bekleniyor.
 
 ## Önceki kapsam
 
