@@ -18,3 +18,12 @@ test results or completed modules to this tree.
   verified only after uploading to the user-selected repository and verifying
   the remote tree/commit. GitHub connection alone is not backup.
 - Update ROADMAP.md with only what has been reimplemented and tested here.
+- The user explicitly authorized publishing to the PUBLIC repository
+  https://github.com/ahmetunay/namzu-rs and asked to upload EVERY completed
+  milestone in this project. This authorization persists across turns; do not
+  ask again merely because the target repository is public.
+- Before ending a turn that changes this project: validate the change, commit
+  all intended source/docs, push main to origin and verify that remote main
+  matches local HEAD. Follow BACKUP.md. Never force-push to overwrite work.
+  If upload fails, report the unbacked-up commit and actual failure. Never
+  upload credentials, .env, generated target/artifacts or private conversations.

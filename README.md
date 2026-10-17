@@ -6,8 +6,11 @@ Bu depo, eski sürümün kurtarılmış kopyası değildir; yeniden uygulamadır
 İlk hedef: Rust SDK, sınırlı ajan döngüsü, dosya araçları, terminal ve
 model kotası kullanmayan deterministik doğrulama. Ayrıntılı durum ROADMAP.md'de.
 
-Her çalışan aşama Git commit'i ile kaydedilir. Yerel Git, aynı bulut diskinin
-kaybolmasına karşı yedek değildir. Uzak depo kurulana kadar dış yedek yoktur.
+Her çalışan aşama Git commit'i ile kaydedilir ve kullanıcının talimatıyla
+[ahmetunay/namzu-rs](https://github.com/ahmetunay/namzu-rs) deposuna gönderilir.
+Bu depo Public'tir; kullanıcı herkese açık yüklemeye izin verdi. İlk üç commit
+GitHub'dan temiz clone ile geri indirilip doğrulandı. Yedek akışı BACKUP.md'de,
+sekiz ana modül ve uygulanacak küçük adımlar ROADMAP.md'de tutulur.
 
 Upstream kaynak: https://github.com/cogitave/namzu
 
@@ -94,3 +97,8 @@ cargo test --workspace --locked
 **Bu dosyaların hepsi aynı bulut diskinde kalırsa dış yedek değildir.** Uzak
 depo hedefi ve gerçek yükleme/geri okuma doğrulanana kadar dış yedek kurulmuş
 sayılmaz. GitHub hesabı bağlantısı tek başına dosyaları yedeklemez.
+
+Bu projede dış yedek artık yukarıdaki GitHub deposudur. Yerel checkpoint script'i
+GitHub'a yüklemez; manifestindeki `remote_backup_verified: false` yalnızca o
+script'in uzak doğrulama yapmadığını ifade eder. Her aşamadan sonra ayrıca
+BACKUP.md'deki push ve uzak commit doğrulaması yapılır.
