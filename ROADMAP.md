@@ -16,7 +16,8 @@ bu yeni depoda tamamlanmış uygulama anlamına gelmez.
 İlk sürüm OpenAI uyumlu Chat Completions adaptörü içerir. Yerel HTTP fixture
 ile CLI → sağlayıcı → dosya aracı → sağlayıcı sonucu zinciri sınandı.
 Codex abonelik sürücüsü ve yeni benchmark koşucusu aşağıdaki 0.4/0.5'te eklendi.
-Canlı hesap onayı bekleniyor. Kayıp eski benchmark script'leriyle birebir uyum
+Canlı hesap/model erişimi ve ilk ortak-model koşumu doğrulandı; bench/ACCEPTANCE.md.
+Kayıp eski benchmark script'leriyle birebir uyum
 iddiası yoktur; yeni sürümlü sözleşme bench/README.md'dedir.
 
 ## Doğrulanan ilk aşama — 2026-10-17
@@ -57,13 +58,13 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 
 | Sıra | Aşama | Bugünkü durum | Bitirme ölçütü |
 | --- | --- | --- | --- |
-| 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | Kısmen hazır | Gerçek görev, oturum devamı, deterministik benchmark |
+| 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
 | 1 | Etkileşimli terminal / TUI | Eksik | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | Eksik | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
-| 6 | Diğer model sağlayıcıları | Tek uyumlu HTTP adaptörü var | Ortak sözleşme testleriyle ayrı sürücüler |
+| 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
@@ -78,8 +79,8 @@ sağlayıcılar ilk TUI/Pals/MCP sürümlerini bekletmez.
 | 0.1 | Workspace, SDK, ajan döngüsü | İlk sürüm tamam: scripted ve yerel HTTP akışında araç sonucu aktarımı |
 | 0.2 | Terminal araçları ve izin politikası | Tamamlandı: shell, literal arama, patch/diff; izin/çıktı sınırları, süreç grubu temizliği; 45 test geçti |
 | 0.3 | Config ve kalıcı oturumlar | Tamamlandı: özel/atomik kayıt, süreç lock'u, geçmiş/resume, açık config seçimi; belirsiz etki otomatik tekrarlanmaz; toplam 55 test |
-| 0.4 | Codex/OpenAI abonelik bağlantısı | Native sürücü uygulandı: device login, özel token/refresh/logout, gerçek model keşfi, SSE/reasoning replay; toplam 68 test. Canlı giriş kullanıcı cihaz onayı bekliyor |
-| 0.5 | Benchmark uyumu ve ilk karşılaştırma | Native koşucu ve 3 görev hazır; seri/300 saniye/bağımsız orakllar/RSS/hash/JSON; toplam 78 test. İlk canlı ortak-model karşılaştırması cihaz onayı bekliyor |
+| 0.4 | Codex/OpenAI abonelik bağlantısı | Tamamlandı: native device login, özel token/refresh/logout, gerçek model keşfi, SSE/reasoning replay. Canlı abonelik, model kataloğu, refresh ve araç çağrılı görevler doğrulandı |
+| 0.5 | Benchmark uyumu ve ilk karşılaştırma | Tamamlandı: seri/300 saniye/bağımsız orakllar/RSS/hash/JSON; toplam 79 test. GPT-6-Luna ile ilk canlı Namzu/Jcode koşumu: bench/ACCEPTANCE.md |
 
 0.2 tamamlandı; shell açık host yürütme iznidir, OS sandbox'ı değildir. 0.4, mevcut API-key
 Chat Completions adaptöründen ayrı abonelik sürücüsüdür. Eski benchmark dosyaları
@@ -187,11 +188,13 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: cihaz kodu onayı → gerçek model kataloğu → ortak modelle ilk canlı benchmark.**
-0.2 ve 0.3 tamamlandı; 0.4 ve 0.5'in uygulamaları ve yerel fixture kabulü hazır.
-Canlı abonelik/model/kota ve Namzu–Jcode skorları henüz doğrulanmadı. Normal
-testlerde harici model çağrısı yapılmadı. Bu insan etkileşimi tamamlanmadan ortak
-temelin canlı kabulünü veya TUI aşamasına geçişi tamamlandı sayma.
+**Sıradaki iş: 1.1 — TUI için çekirdek olay/sağlayıcı akışı ve mesaj görünümü.**
+0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
+katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
+low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında
+çalıştırıldı. Sonuçlar ve karşılaştırma sınırları bench/ACCEPTANCE.md'de.
+Normal testler hâlâ canlı model çağırmaz: 79 test, format, Clippy ve release
+build doğrulandı. TUI/Pals/MCP ve diğer ana modüller henüz yeniden uygulanmadı.
 Kullanıcı 0.2–0.5'in sırayla tamamlanmasını ve her aşamanın GitHub'a yüklenmesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

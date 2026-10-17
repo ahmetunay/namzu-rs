@@ -172,7 +172,9 @@ namzu-rs bench run artifacts/live-suite.json --out artifacts/bench
 Native Rust koşucu aynı girdi/modelle ajanları sırayla, en fazla 300 saniyede
 çalıştırır. Bağımsız dosya/test oraklları, JSON raporları ve wait4 max-RSS ölçümü
 vardır. Offline demo model testi değildir: doğru fixture 3/3, no-op 0/3 almalıdır.
-Canlı karşılaştırma için iki ajanın hesap/model erişimi ayrıca doğrulanır.
+2026-10-17 canlı kabulünde GPT-6-Luna ile iki ajan da 3/3 yaptı.
+Hesap/model erişimi, araç döngüsü ve session resume doğrulandı;
+ölçümler ve sınırlar [kabul kaydında](bench/ACCEPTANCE.md).
 Tam sözleşme ve RAM/izin karşılaştırmasının sınırları [bench/README.md](bench/README.md).
 
 ## Yerel checkpoint ve kurtarma

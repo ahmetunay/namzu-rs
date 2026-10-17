@@ -61,6 +61,17 @@ Bu tek seferlik kopya token süresi dolunca yenilenmez; uzun kullanım için Jco
 ayrı login yap veya yeni profile yeni kopya oluştur. Tokenlar stdout'a, suite'e
 veya GitHub'a yazılmaz. Jcode'un özel secret-store şeması kullanılır.
 
+İlk canlı kabulün model/effort seçimi: `gpt-6-luna`, iki tarafta `low`.
+Aynı ayarı yeniden üretmek için init sonrası suite'te Namzu `args` listesine
+`"--effort", "low"`; Jcode `inherit_env` listesine
+`"JCODE_OPENAI_REASONING_EFFORT", "JCODE_NO_TELEMETRY"` ekle. Run komutuna
+`JCODE_OPENAI_REASONING_EFFORT=low JCODE_OPENAI_TRANSPORT=https JCODE_NO_TELEMETRY=1`
+ortamını ver. Ayrıca seçilen özel Jcode profilinin config.toml dosyasında
+`[provider] openai_reasoning_effort = "low"` seçildi. Suite tek başına mevcut
+Jcode config'ini değiştirmez; bu ayarlar raporun karşılaştırma koşullarıdır.
+İlk gerçek sonuç: [ACCEPTANCE.md](ACCEPTANCE.md) ve
+[redakte sayısal JSON](live-acceptance-2026-10-17.json).
+
 `init` üç built-in görevi ve özel çalışma klasörlerini kullanacak argv'leri yazar;
 model çağrısı yapmaz. Oluşturduğu araç izin profilini incele. Namzu'ya write/shell,
 Jcode'a bash/read/write/edit/apply_patch/glob/grep verilir; Jcode güncellemesi ve

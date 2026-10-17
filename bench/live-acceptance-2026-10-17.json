@@ -1,0 +1,149 @@
+{
+  "finished_ms": 1792229432122,
+  "memory_scope": "wait4 ru_maxrss: largest individual process including waited children; not aggregate tree RSS/PSS",
+  "mode": "live",
+  "model": "gpt-6-luna",
+  "permission_profile_is_declared": true,
+  "runs": [
+    {
+      "agent": "namzu-rs",
+      "elapsed_ms": 5187,
+      "execution_index": 0,
+      "exit_code": 0,
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_passed": true,
+      "peak_rss_kib": 11648,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "3c50432032ac2e1335af9e2681c2e3d193849ba1ea0314bc6b6228fb8e89c5bf",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "repeat": 0,
+      "run_id": "run-0",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      },
+      "status": "passed",
+      "task": "slug"
+    },
+    {
+      "agent": "jcode",
+      "elapsed_ms": 9377,
+      "execution_index": 1,
+      "exit_code": 0,
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_passed": true,
+      "peak_rss_kib": 45096,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "bc1646f4b2f35cd259f01c6419ba95a54f47af821838bbee8f62f34452b2a567",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "repeat": 0,
+      "run_id": "run-1",
+      "stats": null,
+      "status": "passed",
+      "task": "slug"
+    },
+    {
+      "agent": "namzu-rs",
+      "elapsed_ms": 5813,
+      "execution_index": 2,
+      "exit_code": 0,
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_passed": true,
+      "peak_rss_kib": 11548,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "3c50432032ac2e1335af9e2681c2e3d193849ba1ea0314bc6b6228fb8e89c5bf",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "repeat": 0,
+      "run_id": "run-2",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      },
+      "status": "passed",
+      "task": "intervals"
+    },
+    {
+      "agent": "jcode",
+      "elapsed_ms": 15716,
+      "execution_index": 3,
+      "exit_code": 0,
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_passed": true,
+      "peak_rss_kib": 46492,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "bc1646f4b2f35cd259f01c6419ba95a54f47af821838bbee8f62f34452b2a567",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "repeat": 0,
+      "run_id": "run-3",
+      "stats": null,
+      "status": "passed",
+      "task": "intervals"
+    },
+    {
+      "agent": "namzu-rs",
+      "elapsed_ms": 8694,
+      "execution_index": 4,
+      "exit_code": 0,
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_passed": true,
+      "peak_rss_kib": 11388,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "3c50432032ac2e1335af9e2681c2e3d193849ba1ea0314bc6b6228fb8e89c5bf",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "repeat": 0,
+      "run_id": "run-4",
+      "stats": {
+        "provider_calls": 5,
+        "tool_calls": 4
+      },
+      "status": "passed",
+      "task": "toposort"
+    },
+    {
+      "agent": "jcode",
+      "elapsed_ms": 15270,
+      "execution_index": 5,
+      "exit_code": 0,
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_passed": true,
+      "peak_rss_kib": 45860,
+      "permission_profile": "host-read-write-shell",
+      "program_sha256": "bc1646f4b2f35cd259f01c6419ba95a54f47af821838bbee8f62f34452b2a567",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "repeat": 0,
+      "run_id": "run-5",
+      "stats": null,
+      "status": "passed",
+      "task": "toposort"
+    }
+  ],
+  "sequential": true,
+  "started_ms": 1792229371786,
+  "suite_sha256": "de5f4941525455860e34963cf29cb7c7805049fad93252e3411bd9d5b1a911a9",
+  "summary": [
+    {
+      "agent": "namzu-rs",
+      "passed": 3,
+      "total": 3
+    },
+    {
+      "agent": "jcode",
+      "passed": 3,
+      "total": 3
+    }
+  ],
+  "timeout_seconds": 300,
+  "version": 1,
+  "source_commit": "6d6a40ad63b88feca25a215100ccc0aec42ae58f",
+  "jcode_version": "v0.98.1 (1c7426eb1)",
+  "reasoning_effort": "low",
+  "transport": "HTTPS",
+  "repeats": 1,
+  "notes": [
+    "Three-task pilot; no statistical superiority claim.",
+    "Agent system prompts, tools and internal budgets differ; task prompts and starting files matched.",
+    "No OS sandbox; both agents had host read/write/shell permission.",
+    "Peak RSS is largest individual process, not aggregate tree RSS/PSS.",
+    "Raw output, credentials, sessions and local paths are excluded."
+  ]
+}
