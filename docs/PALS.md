@@ -55,7 +55,7 @@ izolasyonu 2.5'tedir.
 
 `tests/teams.rs` iki sağlayıcının aynı anda gerçekten girdiğini kanal/bariyerle,
 concurrency tavanını, sahipliği, kuyruğu, panic/iptali ve join'i sınar. Ücretli
-model kullanılmaz. 2.4 mesaj kuyruğu, 2.5 bilgisayarlar ve 2.6 CLI/TUI bağlantıları henüz yoktur.
+model kullanılmaz. 2.5 bilgisayarlar ve 2.6 CLI/TUI bağlantıları henüz yoktur.
 
 
 ## 2.3: kalıcı Pals ve görev/oturum yaşam döngüsü
@@ -71,7 +71,7 @@ reddeder; mevcut Pal'ın silinmiş dizini okuma sırasında yeniden oluşturulma
   araç profili. `update` beklenen revizyonla atomik karşılaştırır; eski profil
   revizyonları değişmez. Her Pal en fazla 64 revizyon ve 128 görev saklar.
 - `queue_task`: açık görev ekler, mevcut profil revizyonunu ve yeni özel session'ı
-  bağlar. Görev ID'si aynı Pal içinde tekrar kullanılamaz. Otomatik işleyici yoktur.
+  bağlar. Görev ID'si aynı Pal içinde tekrar kullanılamaz. Mesaj işleyicisi 2.4'tedir.
 - `start_task`: yalnızca queued görev alır; süreçler arası Pal kilidini çalışmanın
   sonuna kadar tutar. Aynı Pal/workspace için iki eşzamanlı sahip olamaz.
 - `PalRun::execute`: gerçek SDK model/araç döngüsünü, parent deadline/iptal ve
@@ -122,10 +122,100 @@ başlatmada pending etkinin korunduğu, replay reddi ve açık kapanış doğrul
 Ayrı süreçten kilit çakışması, revizyon/route/sahiplik, pause/archive, onay,
 symlink/kayıp çalışma alanı ve başarılı session devamı da test edilir.
 
+## 2.4: kalıcı mesaj kuyruğu ve otomatik işleme
+
+`registry.mailbox(owner, pal_id)` özel ve sahibine bağlı bir alıcı kuyruğu açar.
+`MailMessage::operator(id, body)` operatör girişi; `MailSender::Pal { id }` aynı
+sahibin aktif Pal'ından yerel iletişimdir. Gönderen kimliğini güvenilen host
+sağlar; modelin serbestçe sender/owner seçmesi için bir araç sunulmaz. `body`
+modele yalnızca **User** mesajı olarak gider; sender/correlation bilgisi system
+komutuna dönüşmez. Her mesaj ayrı task/session açar; `in_reply_to` yalnızca
+korelasyondur, eski konuşmayı veya izinleri kendiliğinden taşımaz. Kuyruk dış
+servislere mesaj göndermez.
+
+- `send`: sabit mesaj ID'sini hedef Pal içinde yaşam boyu tekilleştirir. Aynı
+  ID/sender/body/correlation tekrarında mevcut task ID'sini verir; farklı içerik
+  veya gönderen çatışmadır. Duplicate kontrolü pause ve dolu kuyrukta da geçerlidir.
+  Yeni mesajın task'ı ve mesaj referansı **aynı atomik manifest** ile yayımlanır.
+  Önce özel session yazılır; bu aralıkta çökme yalnızca çalıştırılamayan sahipsiz
+  session bırakabilir. Yeniden gönderim ikinci yürütülebilir task oluşturmaz.
+- En fazla 128 mesaj ve Pal başına mevcut 128 görev tavanı vardır; body en fazla
+  16 KiB, kimlikler en fazla 64 ASCII karakterdir. FIFO eklenme sırasını kullanır.
+  Acknowledged kayıtlar dedup için tutulur; otomatik TTL/silme yoktur.
+- `claim(worker, duration)`: 1 ms–86400 saniye için kalıcı sahiplik verir. Her yeni
+  claim artan generation taşır. `renew` yalnızca canlı/current claim'i uzatır;
+  `release` yalnızca henüz başlanmamış queued/complete-session durumunu bırakır.
+  Eski generation, başka worker veya başka Pal tokenı reddedilir. Bir Pal'da
+  aynı anda bir claim/çalışma sahibi bulunur; farklı Pals ayrı çalışabilir.
+  `claim` için `None`, boş kuyruk yanında mevcut claim/inceleme beklenmesini de
+  belirtir; ayrıntı `messages()` durumlarından okunur.
+- `process_one`: ilk uygun mesajı alıp pinned profil ile gerçek SDK döngüsünü
+  yürütür, sonra sonucu duruma göre ack eder. `MailboxHost::open` doğru route,
+  workspace, izin tavanı ve observer'ı kurar. Ham `start_task` mailbox task'ını
+  çalıştıramaz: teslimat lease'inin kontrolünden geçmek zorundadır.
+- `drain`: hostun açıkça başlattığı otomatik, sonlu işleyicidir. Idle, mesaj sayısı,
+  altyapı hatası veya iptalde durur. Task hataları ayrı teslim sonucu olarak kalır. `BatchBudget` varsayılan dört mesaj/adet 16 adım/16 araç
+  ve 256 KiB'dir. Worst-case toplam rezervasyon ilk etkiden önce `total` bütçeye
+  sığmalıdır; süre tüm batch için tek parent deadline'ıyla sınırlıdır. Önceki
+  teslim sonuçları ve durma nedeni `BatchResult` içinde korunur. Hatalı model/araç
+  işi kendiliğinden tekrar denenmez. Arka planda kopuk thread/daemon oluşturmaz;
+  sürekli polling/CLI/TUI sürücüsü 2.6'da bağlanacaktır.
+- `ack`: yalnızca diskte terminal task'ı kapatır ve aynı claim için idempotenttir.
+  Complete/failed/cancelled/interrupted sonucu modele geri dönmeden saklanır.
+  Pending araç veya session/status uyuşmazlığı varsa `NeedsInspection` olur.
+
+İşleme model/araç isteği ve checkpoint/etki sınırlarında lease'i tekrar kontrol
+eder; host callback'lerinden sonra pause/archive ve lease kontrolleri de yapılır.
+Expiry, canlı worker'ın süreç kilidini devralmaya izin vermez. Böylece eski
+worker'ın uçuşta olan işi ile yeni worker aynı Pal üzerinde yarışmaz. İptal ve
+etki sınırları kooperatiftir; keyfi host Rust kodu/kernel çağrısı zorla kesilmez.
+Varsayılan worker lease'i kalan turn süresini kapsar; elle kısa lease alan host
+uzun işlemler için kendisi renew etmelidir. Lease expiry uçuşta olan model
+isteğini geri almaz ve OS sandbox değildir.
+
+`recover` ve `claim`, süre aşmış teslimatları Pal süreç kilidini aldıktan sonra
+şu kuralla uzlaştırır:
+
+| Çökme sınırı | Yeniden açıldığında davranış |
+| --- | --- |
+| Task/mesaj manifest'i yayımlanmadan | Referans yok; aynı mesaj yeniden gönderilebilir |
+| Claim alınmış, pristine queued session; işe başlanmamış | Aynı task yeni generation ile alınabilir |
+| Model çalışması başlamış/running; pending araç olmasa da | `NeedsInspection`; otomatik replay yok |
+| Araç etkisi olmuş, sonuç checkpoint'i yok | Pending kayıt korunur; `NeedsInspection` |
+| Task terminal, tutarlı session; yalnızca ack eksik | Modele/araçlara dönmeden ack edilir |
+
+`NeedsInspection` aynı Pal'daki sonraki teslimatı da durdurur. Etkileri inceleyen
+host `resolve_inspection(message_id)` ile bu görevi interrupted/acknowledged
+olarak kapatabilir; pending kanıtı korunur, araç tekrar çalıştırılmaz. İşlenmiş
+mesajların ID'leri bu kapanışla yeniden kullanılamaz. El ile inceleme öncesi
+otomatik retry/rollback veya exactly-once uzak model çağrısı iddiası yoktur.
+
+Lease süreleri kalıcı UTC milisaniye kullanır. `MailboxClock` güvenilen host clock
+adaptörüdür; testlerde sayaç ilerletilerek expiry sınanır, timer yarışı/sleep
+kullanılmaz. Sistem saatinin geriye gitmesi expiry toparlanmasını geciktirebilir;
+generation ve süreç kilidi denetimleri korunur. Eski 2.3 manifest'leri eksik
+`mailbox` alanını boş kabul ederek okunur; yeni alanları eski binary'ye açma
+uyumluluğu vaat edilmez. Kuyruk/mesaj/session gövdeleri özel state'tir, GitHub'a
+ve telemetriye yüklenmez.
+
+Çalışan, tamamen offline Rust örneği:
+
+```sh
+cargo run -p namzu-pals --example mailbox --locked
+```
+
+Örnek operatör ve Pal mesajını otomatik işler, gerçek `read_file` ile iki okuma
+yapar; duplicate girişi ve registry yeniden açıldıktan sonra ack kayıtlarını
+kontrol eder. Gerçek model/kota veya dış mesaj servisi kullanmaz.
+
 ## Güncel kabul
 
-2.1–2.3 için toplam **135 Rust testi**, format ve workspace Clippy doğrulanır.
-Çocuk/ekip/kalıcı Pal örneği offline çalışır. Mevcut terminal davranışları ayrıca
-25 gerçek Linux PTY senaryosuyla kontrol edilir. Bu Pals aşamaları için canlı
-model kotası kullanılmaz. 2.4 otomatik mesaj işleme, 2.5 izole Pal bilgisayarları
-ve 2.6 normal CLI/TUI Pals arayüzleri ayrı teslimlerdir.
+2.4 sonrasında toplam **157 Rust testi** geçti. 22 yeni mailbox testi: gerçek
+alt süreçte beş çökme sınırı (yayınlama öncesi, claim sonrası, sağlayıcı içinde,
+araç etkisi sonrası, task finish/ack arası); dedup/FIFO/yeniden başlatma;
+eski/yanlış lease, sahiplik, renew/release/ack, pause, onay, aggregate bütçe,
+iptal ve bozuk binding kontrolü. Mevcut Pals/terminal/provider testleri de geçti.
+Format, workspace Clippy ve release derlemesi doğrulanır. Mailbox örneği offline
+çalışır; bu aşamada canlı model kotası kullanılmaz. Önceki TUI 1.4 / Pals 2.3
+kabulünde 25 gerçek Linux PTY senaryosu geçmişti; bu aşama TUI kodunu değiştirmez.
+2.5 izole Pal bilgisayarları ve 2.6 normal CLI/TUI Pals arayüzleri ayrı teslimlerdir.

@@ -6,7 +6,10 @@ use namzu_core::{
     Turn, TurnContext, run_history_in_context,
 };
 pub use registry::{
-    PalCreate, PalDefinition, PalRun, PalStatus, PalUpdate, Registry, TaskRecord, TaskStatus,
+    BatchBudget, BatchResult, DeliveryResult, DeliveryState, Envelope, HostRuntime, Lease,
+    MailMessage, MailSender, Mailbox, MailboxClock, MailboxHost, MailboxRuntime, PalCreate,
+    PalDefinition, PalRun, PalStatus, PalUpdate, Registry, SendReceipt, SystemClock, TaskRecord,
+    TaskStatus,
 };
 use std::{
     collections::BTreeSet,

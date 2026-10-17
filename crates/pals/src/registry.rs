@@ -9,6 +9,12 @@ use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
 };
+mod mailbox;
+pub use mailbox::{
+    BatchBudget, BatchResult, DeliveryResult, DeliveryState, Envelope, HostRuntime, Lease,
+    MailMessage, MailSender, Mailbox, MailboxClock, MailboxHost, MailboxRuntime, SendReceipt,
+    SystemClock,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,6 +82,8 @@ struct Record {
     version: u32,
     revisions: Vec<PalDefinition>,
     tasks: Vec<TaskRecord>,
+    #[serde(default)]
+    mailbox: Vec<Envelope>,
 }
 
 /// Two explicit private roots: host metadata cannot be exposed through workspace tools.
@@ -164,6 +172,7 @@ impl Registry {
             }
         }
         // Missing/replaced directories fail closed; never recreate them on load.
+        mailbox::validate_record(&record)?;
         self.workspaces.open_child(id)?;
         self.store.open_child(id)?;
         Ok(record)
@@ -200,6 +209,7 @@ impl Registry {
                 version: 1,
                 revisions: vec![pal.clone()],
                 tasks: vec![],
+                mailbox: vec![],
             },
         )?;
         Ok(pal)
@@ -321,17 +331,29 @@ impl Registry {
         prompt: &str,
         source: Option<&str>,
     ) -> Result<TaskRecord, AgentError> {
+        let _lock = self.store.lock("registry")?;
+        let mut record = self.load(owner, id)?;
+        let task = self.append_task(id, &mut record, task_id, prompt, source)?;
+        self.save(id, &record)?;
+        Ok(task)
+    }
+    fn append_task(
+        &self,
+        id: &str,
+        record: &mut Record,
+        task_id: &str,
+        prompt: &str,
+        source: Option<&str>,
+    ) -> Result<TaskRecord, AgentError> {
         if !valid_id(task_id) || prompt.is_empty() || prompt.len() > 16 * 1024 {
             return Err(AgentError::Configuration("invalid persistent task"));
         }
-        let _lock = self.store.lock("registry")?;
-        let mut record = self.load(owner, id)?;
         require_active(record.revisions.last().expect("validated revisions"))?;
         if record.tasks.len() >= 128 || record.tasks.iter().any(|t| t.id == task_id) {
             return Err(AgentError::State("duplicate task or task limit"));
         }
         let (pal, messages) = if let Some(source) = source {
-            let task = find_task(&record, source)?;
+            let task = find_task(record, source)?;
             if task.status != TaskStatus::Complete {
                 return Err(AgentError::State("followup requires a completed task"));
             }
@@ -364,7 +386,6 @@ impl Registry {
             updated_ms: now,
         };
         record.tasks.push(task.clone());
-        self.save(id, &record)?;
         Ok(task)
     }
     pub fn session(&self, owner: &str, id: &str, task_id: &str) -> Result<Session, AgentError> {
@@ -390,12 +411,29 @@ impl Registry {
         id: &str,
         task_id: &str,
     ) -> Result<PalRun<'_>, AgentError> {
+        self.start_task_checked(owner, id, task_id, |record| {
+            if record.mailbox.iter().any(|e| e.task_id == task_id) {
+                return Err(AgentError::State(
+                    "mailbox task requires its delivery lease",
+                ));
+            }
+            Ok(())
+        })
+    }
+    fn start_task_checked(
+        &self,
+        owner: &str,
+        id: &str,
+        task_id: &str,
+        admit: impl FnOnce(&Record) -> Result<(), AgentError>,
+    ) -> Result<PalRun<'_>, AgentError> {
         if !valid_id(id) {
             return Err(AgentError::State("invalid Pal ID"));
         }
         let run_lock = self.store.lock(&format!("{id}-run"))?;
         let _lock = self.store.lock("registry")?;
         let mut record = self.load(owner, id)?;
+        admit(&record)?;
         require_active(record.revisions.last().expect("validated revisions"))?;
         if record.tasks.iter().any(|t| t.status == TaskStatus::Running) {
             return Err(AgentError::State(
@@ -440,6 +478,11 @@ impl Registry {
         let _run = self.store.lock(&format!("{id}-run"))?;
         let _lock = self.store.lock("registry")?;
         let mut record = self.load(owner, id)?;
+        if record.mailbox.iter().any(|e| e.task_id == task_id) {
+            return Err(AgentError::State(
+                "mailbox interruption requires mailbox inspection resolution",
+            ));
+        }
         let task = find_task(&record, task_id)?.clone();
         let pal = &record.revisions[(task.revision - 1) as usize];
         let mut session = self.load_session(id, &task, pal)?;
@@ -594,12 +637,17 @@ struct RunObserver<'a, 'r, O> {
 impl<O: Observer> Observer for RunObserver<'_, '_, O> {
     fn approve(&mut self, call: &ToolCall, context: &TurnContext) -> Result<bool, AgentError> {
         self.run.assert_active()?;
-        self.host.approve(call, context)
+        let approved = self.host.approve(call, context)?;
+        self.run.assert_active()?;
+        Ok(approved)
     }
     fn event(&mut self, event: Event) -> Result<(), AgentError> {
-        let before_request = matches!(event, Event::ProviderStarted { .. });
+        let before_effect = matches!(
+            event,
+            Event::ProviderStarted { .. } | Event::ToolStarted { .. }
+        );
         self.host.event(event)?;
-        if before_request {
+        if before_effect {
             self.run.assert_active()?;
         }
         Ok(())
@@ -616,6 +664,7 @@ impl<O: Observer> Observer for RunObserver<'_, '_, O> {
             session: &mut self.run.session,
         }
         .checkpoint(messages, stats, pending)?;
-        self.host.checkpoint(messages, stats, pending)
+        self.host.checkpoint(messages, stats, pending)?;
+        self.run.assert_active()
     }
 }
