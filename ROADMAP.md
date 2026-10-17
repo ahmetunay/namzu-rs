@@ -6,12 +6,16 @@ bu yeni depoda tamamlanmış uygulama anlamına gelmez.
 
 ## İlk aşama
 
-- [ ] Rust workspace ve SDK/ajan çekirdeği
-- [ ] Deterministik sağlayıcı ile araç çağrısı döngüsü
-- [ ] Sınırlı dosya araçları, terminal ve JSON benchmark çıktısı
-- [ ] Süre (varsayılan 300 saniye), adım ve araç çağrısı bütçeleri
+- [x] Rust workspace ve SDK/ajan çekirdeğinin ilk sürümü
+- [x] Deterministik sağlayıcı ile araç çağrısı döngüsü
+- [x] Sınırlı dosya araçları, terminal komutu ve JSON çıktı sözleşmesi
+- [x] Süre (varsayılan 300 saniye), adım ve araç çağrısı bütçeleri
 - [ ] Test/Clippy/format/release doğrulaması
 - [ ] Uzak, özel Git deposuna doğrulanmış yedek
+
+İlk sürüm OpenAI uyumlu Chat Completions adaptörü içerir. Yerel HTTP fixture
+ile CLI → sağlayıcı → dosya aracı → sağlayıcı sonucu zinciri sınandı.
+Codex abonelik girişi ve eski benchmark script uyumu henüz yoktur.
 
 ## Önceki kapsam
 

@@ -1,0 +1,19 @@
+[package]
+name = "namzu-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "namzu-rs"
+path = "src/main.rs"
+
+[dependencies]
+namzu-core.workspace = true
+namzu-tools.workspace = true
+namzu-provider.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+tempfile.workspace = true
+ctrlc = "3"
