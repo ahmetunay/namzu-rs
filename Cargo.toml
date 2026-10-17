@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/tools", "crates/provider", "crates/cli"]
+members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session"]
 resolver = "2"
 
 [workspace.package]
@@ -16,3 +16,4 @@ tempfile = "3"
 namzu-core = { path = "crates/core" }
 namzu-tools = { path = "crates/tools" }
 namzu-provider = { path = "crates/provider" }
+namzu-session = { path = "crates/session" }

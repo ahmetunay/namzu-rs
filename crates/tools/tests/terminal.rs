@@ -304,16 +304,41 @@ fn cancellation_after_child_handshake_kills_process_group() {
         .read_to_string(&mut ready)
         .unwrap();
     assert_eq!(ready, "ready");
-    cancellation.cancel();
-    assert_eq!(
-        worker.join().unwrap().unwrap_err(),
-        namzu_core::AgentError::Cancelled
-    );
     let pid = std::fs::read_to_string(root.path().join("child.pid"))
         .unwrap()
         .trim()
         .parse::<u32>()
         .unwrap();
+    #[cfg(target_os = "linux")]
+    let pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) as i32 };
+    #[cfg(target_os = "linux")]
+    assert!(pidfd >= 0);
+    cancellation.cancel();
+    assert_eq!(
+        worker.join().unwrap().unwrap_err(),
+        namzu_core::AgentError::Cancelled
+    );
+    // Await the kernel exit event, not a wall-clock race against signal delivery.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        let mut event = libc::pollfd {
+            fd: pidfd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        loop {
+            let result = libc::poll(&mut event, 1, -1);
+            if result >= 0 {
+                assert!(result > 0);
+                break;
+            }
+            assert_eq!(
+                std::io::Error::last_os_error().kind(),
+                std::io::ErrorKind::Interrupted
+            );
+        }
+        libc::close(pidfd);
+    }
     if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
         assert!(
             stat.rsplit_once(')')

@@ -87,6 +87,8 @@ pub enum AgentError {
     Protocol(&'static str),
     #[error("provider failure: {0}")]
     Provider(String),
+    #[error("state failure: {0}")]
+    State(&'static str),
 }
 
 /// Shared with provider/tool implementations. Blocking operations must enforce
@@ -173,6 +175,28 @@ pub struct Turn {
     pub messages: Vec<Message>,
 }
 
+/// Durable host checkpoint. `pending_call` is saved BEFORE a tool is invoked.
+/// A host must refuse automatic replay after an interrupted/uncertain effect.
+pub trait Observer {
+    fn checkpoint(
+        &mut self,
+        messages: &[Message],
+        stats: &Stats,
+        pending_call: Option<&ToolCall>,
+    ) -> Result<(), AgentError>;
+}
+pub struct NoopObserver;
+impl Observer for NoopObserver {
+    fn checkpoint(
+        &mut self,
+        _: &[Message],
+        _: &Stats,
+        _: Option<&ToolCall>,
+    ) -> Result<(), AgentError> {
+        Ok(())
+    }
+}
+
 /// Run a single turn. The complete tool-call batch is validated and budgeted
 /// before its first effect. Tool failures are conversation data; cancellation,
 /// malformed calls and exhausted budgets are turn failures.
@@ -182,6 +206,26 @@ pub fn run_turn(
     prompt: &str,
     limits: Limits,
     cancellation: Cancellation,
+) -> Result<Turn, AgentError> {
+    run_history(
+        provider,
+        tools,
+        vec![Message::User {
+            content: prompt.into(),
+        }],
+        limits,
+        cancellation,
+        &mut NoopObserver,
+    )
+}
+
+pub fn run_history(
+    provider: &mut impl Provider,
+    tools: &mut impl Tools,
+    mut messages: Vec<Message>,
+    limits: Limits,
+    cancellation: Cancellation,
+    observer: &mut impl Observer,
 ) -> Result<Turn, AgentError> {
     if limits.timeout.is_zero() || limits.max_steps == 0 || limits.max_text_bytes == 0 {
         return Err(AgentError::Configuration(
@@ -202,15 +246,48 @@ pub fn run_turn(
             .ok_or(AgentError::Protocol("conversation exceeds byte budget"))?;
         Ok(())
     };
-    account(prompt.len())?;
-    let mut messages = vec![Message::User {
-        content: prompt.into(),
-    }];
+    account(
+        serde_json::to_vec(&messages)
+            .map_err(|_| AgentError::Protocol("cannot encode history"))?
+            .len(),
+    )?;
     let mut ids = HashSet::new();
+    let mut pending = HashSet::new();
+    for message in &messages {
+        match message {
+            Message::Assistant { tool_calls, .. } => {
+                if !pending.is_empty() {
+                    return Err(AgentError::Protocol("unfinished tool history"));
+                }
+                for call in tool_calls {
+                    if call.id.is_empty() || !ids.insert(call.id.clone()) {
+                        return Err(AgentError::Protocol("invalid historical tool call ID"));
+                    }
+                    pending.insert(call.id.clone());
+                }
+            }
+            Message::Tool { tool_call_id, .. } => {
+                if !pending.remove(tool_call_id) {
+                    return Err(AgentError::Protocol("orphan historical tool result"));
+                }
+            }
+            _ => {
+                if !pending.is_empty() {
+                    return Err(AgentError::Protocol("unfinished tool history"));
+                }
+            }
+        }
+    }
+    if !pending.is_empty() {
+        return Err(AgentError::Protocol(
+            "unresolved historical tool calls; explicit recovery required",
+        ));
+    }
     let mut stats = Stats {
         provider_calls: 0,
         tool_calls: 0,
     };
+    observer.checkpoint(&messages, &stats, None)?;
     for _ in 0..limits.max_steps {
         context.remaining()?;
         let definitions = tools.definitions();
@@ -227,6 +304,7 @@ pub fn run_turn(
                 content: response.text.clone(),
                 tool_calls: vec![],
             });
+            observer.checkpoint(&messages, &stats, None)?;
             return Ok(Turn {
                 output: response.text,
                 stats,
@@ -255,6 +333,8 @@ pub fn run_turn(
         });
         for call in response.tool_calls {
             context.remaining()?;
+            observer.checkpoint(&messages, &stats, Some(&call))?;
+            context.remaining()?;
             let result = if names.contains(call.name.as_str()) {
                 tools.call(&call, &context)?
             } else {
@@ -268,6 +348,7 @@ pub fn run_turn(
                 content: result.content,
                 is_error: result.is_error,
             });
+            observer.checkpoint(&messages, &stats, None)?;
         }
     }
     Err(AgentError::StepLimit)

@@ -76,7 +76,36 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI, session kalıcılığı, Pals ve MCP henüz yeniden uygulanmadı.
+- TUI, Pals ve MCP henüz yeniden uygulanmadı.
+
+## 0.3 — özel durum ve oturum devamı
+
+Varsayılan kayıt yeri `$NAMZU_STATE_DIR`, yoksa `$XDG_STATE_HOME/namzu-rs`,
+yoksa `~/.local/state/namzu-rs`. `--state-dir` açık seçicidir. Unix'te dizin
+0700, dosyalar 0600 olmalı; yanlış sahiplik, symlink/hardlink ve paylaşılmış
+dosyalar reddedilir. Atomik rename + dosya/dizin sync ve süreçler arası lock var.
+
+```sh
+namzu-rs config init
+namzu-rs config show
+namzu-rs exec 'İlk görev' --model MODEL --json
+namzu-rs session list
+namzu-rs session show OTURUM_ID
+namzu-rs exec 'Devam et' --model MODEL --resume OTURUM_ID --json
+```
+
+CLI seçenekleri seçilen config'i ezer. `--config` açıkça güvenilen JSON dosyasını
+seçer; proje config'i otomatik okunmaz. Örnek: config.example.json. Config yalnızca
+ortam değişkeni adını saklar, API anahtarını saklamaz. Config araç listesini
+daraltabilir; shell/yazma izni yalnızca çağrının `--allow-shell/--allow-write`
+seçenekleriyle açılır. Resume eski yetkileri kendiliğinden açmaz.
+
+Tamamlanmış session aynı canonical cwd ve sağlayıcı/model/endpoint ile devam
+eder. Her araçtan ÖNCE pending kayıt, sonuçtan SONRA checkpoint yazılır. Disk
+hatası etkiyi engeller. Çökme/iptal/hata sonrası session running/failed kalır ve
+otomatik resume reddedilir: `session show` ile etkileri inceleyip yeni session
+açılmalıdır. Bu ilk sürüm yarım kalan turn için otomatik kurtarma/rollback vaat
+etmez. Özel session/config dosyaları GitHub yedeğine dâhil değildir.
 
 0.2: Shell en fazla 300 saniye (varsayılan 60 ve turn kalan süresiyle sınırlı),
 64 KiB birleşik çıktı; süreç grubu iptal/hata/çıktı sınırı ve normal lider

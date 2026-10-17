@@ -19,6 +19,7 @@ fn offline_demo_satisfies_filesystem_oracle_and_json_contract() {
 
 #[test]
 fn missing_key_fails_as_json_without_network_access() {
+    let state = tempfile::tempdir().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_namzu-rs"))
         .args([
             "exec",
@@ -29,6 +30,7 @@ fn missing_key_fails_as_json_without_network_access() {
             "--api-key-env",
             "NAMZU_TEST_MISSING_KEY",
         ])
+        .env("NAMZU_STATE_DIR", state.path())
         .env_remove("NAMZU_TEST_MISSING_KEY")
         .output()
         .unwrap();

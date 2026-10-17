@@ -7,3 +7,7 @@
 credentials.json
 __pycache__/
 *.pyc
+/.namzu-state/
+**/codex-credentials.json
+/s-*.json
+*.lock.tmp

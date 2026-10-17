@@ -95,6 +95,7 @@ fn real_cli_replays_tool_result_through_http_provider() {
             "--timeout",
             "10",
         ])
+        .env("NAMZU_STATE_DIR", root.path().join("state"))
         .env("NAMZU_TEST_FIXTURE_KEY", "test-fixture-only")
         .env("NO_PROXY", "127.0.0.1")
         .env("no_proxy", "127.0.0.1")
@@ -113,6 +114,7 @@ fn real_cli_replays_tool_result_through_http_provider() {
 
 #[test]
 fn provider_error_body_never_leaks_secrets_into_cli_output() {
+    let root = tempfile::tempdir().unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let server = std::thread::spawn(move || {
@@ -141,16 +143,17 @@ fn provider_error_body_never_leaks_secrets_into_cli_output() {
             "--timeout",
             "10",
         ])
+        .env("NAMZU_STATE_DIR", root.path().join("state"))
         .env("NAMZU_TEST_FIXTURE_KEY", "test-fixture-only")
         .env("NO_PROXY", "127.0.0.1")
         .env("no_proxy", "127.0.0.1")
         .output()
         .unwrap();
     assert!(!output.status.success());
-    server.join().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(!stdout.contains("test-fixture-only"));
     assert!(!stdout.contains("sensitive-upstream-payload"));
     let value: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(value["error"], "provider failure: HTTP status 429");
+    server.join().unwrap();
 }

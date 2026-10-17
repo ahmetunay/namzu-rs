@@ -1,13 +1,10 @@
+mod config;
+mod execute;
 use clap::{Parser, Subcommand};
 use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn, run_turn};
-use namzu_provider::OpenAiCompatible;
-use namzu_tools::{FileTools, TerminalTools, ToolPolicy};
+use namzu_tools::FileTools;
 use serde_json::json;
-use std::{
-    path::PathBuf,
-    process::ExitCode,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, process::ExitCode, time::Instant};
 
 #[derive(Parser)]
 #[command(name = "namzu-rs", version, about = "Native Rust agent reconstruction")]
@@ -23,36 +20,79 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Run a prompt using an explicitly configured OpenAI-compatible API.
-    Exec {
-        prompt: String,
-        #[arg(long, default_value = ".")]
-        cwd: PathBuf,
+    /// Run a prompt using a selected provider and private session storage.
+    Exec(Box<execute::ExecArgs>),
+    /// List or inspect private sessions. Output may contain private task content.
+    Session {
         #[arg(long)]
-        model: String,
-        #[arg(long, default_value = "https://api.openai.com/v1")]
-        base_url: String,
-        #[arg(long, default_value = "OPENAI_API_KEY")]
-        api_key_env: String,
-        #[arg(long, default_value_t=300, value_parser=clap::value_parser!(u64).range(1..=86400))]
-        timeout: u64,
-        #[arg(long, default_value_t = 64)]
-        max_steps: usize,
-        #[arg(long, default_value_t = 128)]
-        max_tool_calls: usize,
-        /// Grant writes within --cwd. Without this flag only read/list tools exist.
-        #[arg(long)]
-        allow_write: bool,
-        /// Grant host shell execution (also permits writes/network outside cwd).
-        #[arg(long)]
-        allow_shell: bool,
-        #[arg(long, value_delimiter = ',')]
-        tool_allow: Option<Vec<String>>,
-        #[arg(long, value_delimiter = ',')]
-        tool_deny: Vec<String>,
-        #[arg(long)]
-        json: bool,
+        state_dir: Option<PathBuf>,
+        #[command(subcommand)]
+        action: SessionAction,
     },
+    /// Create or show private default configuration (contains selectors, not keys).
+    Config {
+        #[arg(long)]
+        state_dir: Option<PathBuf>,
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SessionAction {
+    List,
+    Show { id: String },
+}
+#[derive(Subcommand)]
+enum ConfigAction {
+    Init,
+    Show,
+}
+
+fn state_command(
+    state_dir: Option<PathBuf>,
+    session: Option<SessionAction>,
+    config: Option<ConfigAction>,
+) -> Result<(), namzu_core::AgentError> {
+    use namzu_session::{PrivateStore, Session, default_state_dir};
+    let store = PrivateStore::open(state_dir.unwrap_or(default_state_dir()?))?;
+    if let Some(action) = session {
+        match action {
+            SessionAction::List => {
+                let mut values = vec![];
+                for name in store.names()? {
+                    if name.starts_with("s-") && name.ends_with(".json") {
+                        let id = name.trim_end_matches(".json");
+                        let item = Session::load(&store, id)?;
+                        values.push(json!({"id":id,"status":item.status,"updated_ms":item.updated_ms,"pending_call":item.pending_call}));
+                    }
+                }
+                println!("{}", json!({"sessions":values}));
+            }
+            SessionAction::Show { id } => println!(
+                "{}",
+                serde_json::to_string(&Session::load(&store, &id)?)
+                    .map_err(|_| namzu_core::AgentError::State("cannot encode session"))?
+            ),
+        }
+    }
+    if let Some(action) = config {
+        match action {
+            ConfigAction::Init => {
+                let _lock = store.lock("config")?;
+                if store.read::<serde_json::Value>("config.json")?.is_some() {
+                    return Err(namzu_core::AgentError::State("config already exists"));
+                }
+                store.write("config.json", &config::Config::default())?;
+            }
+            ConfigAction::Show => println!(
+                "{}",
+                serde_json::to_string(&config::Config::load(&store, None)?)
+                    .map_err(|_| namzu_core::AgentError::State("cannot encode config"))?
+            ),
+        }
+    }
+    Ok(())
 }
 
 fn offline_demo(cancellation: Cancellation) -> Result<Turn, String> {
@@ -109,56 +149,35 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let started = Instant::now();
-    let (json_output, offline, result) = match cli.command {
-        Command::Demo { json } => (json, true, offline_demo(cancellation)),
-        Command::Exec {
-            prompt,
-            cwd,
-            model,
-            base_url,
-            api_key_env,
-            timeout,
-            max_steps,
-            max_tool_calls,
-            allow_write,
-            allow_shell,
-            tool_allow,
-            tool_deny,
-            json,
-        } => {
-            let result = (|| {
-                if max_steps == 0 {
-                    return Err("max-steps must be positive".to_owned());
+    let (json_output, offline, session_id, result) = match cli.command {
+        Command::Demo { json } => (json, true, None, offline_demo(cancellation)),
+        Command::Exec(args) => {
+            let json = args.json;
+            let result = execute::execute(*args, cancellation);
+            (
+                json,
+                false,
+                result.session_id,
+                result.result.map_err(|e| e.to_string()),
+            )
+        }
+        Command::Session { state_dir, action } => {
+            return match state_command(state_dir, Some(action), None) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
                 }
-                let key = std::env::var(&api_key_env)
-                    .map_err(|_| "API key environment variable is missing or invalid".to_owned())?;
-                let mut provider =
-                    OpenAiCompatible::new(&base_url, model, &key).map_err(|e| e.to_string())?;
-                let mut tools = TerminalTools::new(
-                    cwd,
-                    ToolPolicy {
-                        allow_write,
-                        allow_shell,
-                        allow: tool_allow.map(|v| v.into_iter().collect()),
-                        deny: tool_deny.into_iter().collect(),
-                    },
-                )
-                .map_err(|_| "cannot open workspace".to_owned())?;
-                run_turn(
-                    &mut provider,
-                    &mut tools,
-                    &prompt,
-                    Limits {
-                        timeout: Duration::from_secs(timeout),
-                        max_steps,
-                        max_tool_calls,
-                        ..Limits::default()
-                    },
-                    cancellation,
-                )
-                .map_err(|e| e.to_string())
-            })();
-            (json, false, result)
+            };
+        }
+        Command::Config { state_dir, action } => {
+            return match state_command(state_dir, None, Some(action)) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
         }
     };
     let elapsed_ms = started.elapsed().as_millis();
@@ -167,7 +186,7 @@ fn main() -> ExitCode {
             if json_output {
                 println!(
                     "{}",
-                    json!({"format_version":1,"status":"ok","output":turn.output,"stats":turn.stats,"elapsed_ms":elapsed_ms,"offline":offline})
+                    json!({"format_version":1,"status":"ok","output":turn.output,"stats":turn.stats,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
                 );
             } else {
                 println!("{}", turn.output);
@@ -178,7 +197,7 @@ fn main() -> ExitCode {
             if json_output {
                 println!(
                     "{}",
-                    json!({"format_version":1,"status":"error","error":error,"elapsed_ms":elapsed_ms,"offline":offline})
+                    json!({"format_version":1,"status":"error","error":error,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
                 );
             } else {
                 eprintln!("{error}");

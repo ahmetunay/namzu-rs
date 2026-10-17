@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "provider": "openai-compatible",
+  "model": "SELECT_A_MODEL",
+  "base_url": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "timeout": 300,
+  "max_steps": 64,
+  "max_tool_calls": 128,
+  "tool_allow": null,
+  "tool_deny": []
+}

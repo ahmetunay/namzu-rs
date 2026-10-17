@@ -13,6 +13,8 @@ path = "src/main.rs"
 namzu-core.workspace = true
 namzu-tools.workspace = true
 namzu-provider.workspace = true
+namzu-session.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 tempfile.workspace = true
