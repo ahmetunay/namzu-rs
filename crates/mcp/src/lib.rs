@@ -1,6 +1,8 @@
-//! Transport-independent MCP client protocol. This package performs no I/O,
-//! executes no server tools and never retries an uncertain request.
+//! Bounded MCP client protocol and explicit Unix stdio transport. The protocol
+//! itself performs no I/O. No uncertain request is automatically retried.
 mod session;
+#[cfg(unix)]
+pub mod stdio;
 pub mod types;
 pub mod wire;
 pub use session::{Abandoned, ClientSession, Expired, Incoming, Phase};

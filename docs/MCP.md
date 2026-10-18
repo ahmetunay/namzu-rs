@@ -1,8 +1,9 @@
 # MCP 3.1 — protokol ve veri tipleri
 
 2026-10-18: `namzu-mcp` bağımsız Rust paketi eklendi. Core bu pakete bağımlı
-değildir. Paket JSON-RPC codec'i ve bir bağlantı nesline ait client durum
+değildir. 3.1 protokol katmanı JSON-RPC codec'i ve bir bağlantı nesline ait client durum
 makinesidir; süreç/ağ/dosya açmaz, araç yürütmez ve kimlik bilgisi okumaz.
+**3.2 stdio taşıması eklendi:** gerçek process/I/O için [MCP-STDIO.md](MCP-STDIO.md).
 
 ## Kapsam ve resmî referans
 
@@ -165,5 +166,5 @@ gerçek MCP server testi değildir.
 
 Yerel makine kanıtları ignored `artifacts/mcp31-validation.json`,
 `mcp31-example.json` ve `mcp31-spec-sources.json` dosyalarındadır. Kaynak/belgeler
-ayrı commit ile GitHub'a yüklenir. **3.2–3.8 henüz tamamlanmadı.** Sıradaki iş
-stdio framing, kontrollü env/cwd ve child process yaşam döngüsüdür.
+ayrı commit ile GitHub'a yüklenir. Bu 3.1 kabulünden sonra **3.2 tamamlandı**; [stdio kabulü](MCP-STDIO.md).
+**3.3–3.8 henüz tamamlanmadı.** Sıradaki iş HTTP/SSE taşımasıdır.
