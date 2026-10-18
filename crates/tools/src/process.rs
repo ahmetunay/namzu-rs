@@ -152,7 +152,7 @@ pub fn run_process_input(
         use std::os::unix::process::CommandExt;
         context.remaining()?;
         if spec.output_limit == 0
-            || spec.output_limit > 4 * 1024 * 1024
+            || spec.output_limit > 16 * 1024 * 1024
             || spec.timeout.is_zero()
             || input.len() > 4 * 1024 * 1024
         {

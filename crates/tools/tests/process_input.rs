@@ -43,3 +43,14 @@ fn closed_stdin_does_not_prevent_collecting_completed_output() {
     assert_eq!(result.stdout, "done");
     assert_eq!(result.exit_code, Some(0));
 }
+
+#[test]
+fn explicit_large_output_budget_supports_desktop_frames() {
+    let context = TurnContext::new(Duration::from_secs(20), Cancellation::default()).unwrap();
+    let mut process = spec("head -c 5242880 /dev/zero | tr '\\000' 'x'");
+    process.output_limit = 12 * 1024 * 1024;
+    let result = run_process_input(process, &context, b"").unwrap();
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(result.stdout.len(), 5 * 1024 * 1024);
+    assert!(result.stdout.bytes().all(|byte| byte == b'x'));
+}

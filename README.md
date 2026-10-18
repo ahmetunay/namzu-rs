@@ -302,7 +302,8 @@ namzu-rs mcp discover SERVER templates --approve
 
 [SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
 kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
-3.6 entegrasyonu tamamlandı; 3.8 toparlanma da tamamlandı; sıradaki bölüm **4 — ekran/girdi ve tarayıcı kontrolü**.
+3.6 entegrasyonu ve 3.8 toparlanma tamamlandı. Bilgisayar ekran/girdi **4.1**
+hazır; sıradaki iş **4.2 — tarayıcı ve DOM**.
 
 ## Yerel checkpoint ve kurtarma
 
@@ -357,3 +358,13 @@ subscribe/update/unsubscribe ve generation sınırları. `mcp recovery list`
 inceleme kayıtlarını verir; `acknowledge ID --inspected` yalnızca fence'i
 kaldırır. `mcp watch` sınırlı abonelik akışıdır. Eski araç çağrısı veya abonelik
 otomatik tekrarlanmaz. [Kabul ve sınırlar](docs/MCP-RECOVERY.md).
+
+## Pal masaüstü kontrolü
+
+4.1 tamam: açıkça seçilen desktop image ile owned Linux Xvfb ekranı,
+PNG screenshot, koordinat, fare ve klavye işlemleri kullanılabilir.
+`pal --allow-input computer PAL_ID desktop request.json` girdi iznini yalnızca
+o komuta verir; screenshot `--output NEW_FILE.png` ile özel dosyaya yazılır.
+Metin girişi şu an US-layout ASCII ile sınırlıdır. Tarayıcı 4.2–4.3,
+model/TUI görsel araç entegrasyonu 4.4 kapsamındadır.
+[İmaj oluşturma, SDK/CLI kullanımı ve kabul](docs/DESKTOP.md).

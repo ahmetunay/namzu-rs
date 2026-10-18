@@ -19,6 +19,37 @@ fn files(request: GuestRequest) -> Result<GuestValue, String> {
     let root = Dir::open_ambient_dir("/workspace", ambient_authority())
         .map_err(|_| "guest workspace unavailable")?;
     match request {
+        GuestRequest::Desktop {
+            request,
+            timeout_ms,
+        } => {
+            if !(1..=15000).contains(&timeout_ms) {
+                return Err("invalid desktop deadline".into());
+            }
+            let input = serde_json::to_vec(&request).map_err(|_| "invalid desktop input")?;
+            let context =
+                TurnContext::new(Duration::from_millis(timeout_ms), Cancellation::default())
+                    .map_err(|_| "invalid desktop deadline")?;
+            let out = namzu_tools::process::run_process_input(
+                ProcessSpec {
+                    program: "/usr/local/bin/namzu-desktop".into(),
+                    args: vec![],
+                    cwd: "/workspace".into(),
+                    env: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                    timeout: Duration::from_millis(timeout_ms),
+                    output_limit: namzu_computer::desktop::SCREEN_WIRE,
+                },
+                &context,
+                &input,
+            )
+            .map_err(|_| "desktop deadline; computer must stop")?;
+            if out.status != "exited" || out.exit_code != Some(0) {
+                return Err("desktop worker failed".into());
+            }
+            let value: Result<namzu_computer::desktop::Reply, String> =
+                serde_json::from_str(&out.stdout).map_err(|_| "invalid desktop reply")?;
+            value.map(|value| GuestValue::Desktop { value })
+        }
         GuestRequest::Probe => Ok(GuestValue::Ready),
         GuestRequest::Read { path } => {
             if !valid_path(&path) {
@@ -221,6 +252,32 @@ fn reap_descendants() -> Result<(), String> {
 }
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("idle") {
+        if let Ok(screen) = std::env::var("NAMZU_DESKTOP_SCREEN") {
+            let mut server = std::process::Command::new("/usr/bin/Xvfb")
+                .args([
+                    ":99",
+                    "-screen",
+                    "0",
+                    &screen,
+                    "-nolisten",
+                    "tcp",
+                    "-ac",
+                    "-noreset",
+                ])
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("desktop server unavailable");
+            loop {
+                if server.try_wait().ok().flatten().is_some() {
+                    std::process::exit(1)
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
         loop {
             std::thread::park();
         }
@@ -238,7 +295,7 @@ fn main() {
     })();
     let reply = GuestReply { version: 1, result };
     match serde_json::to_vec(&reply) {
-        Ok(bytes) if bytes.len() <= WIRE_LIMIT => {
+        Ok(bytes) if bytes.len() <= namzu_computer::desktop::SCREEN_WIRE => {
             let _ = std::io::stdout().write_all(&bytes);
         }
         _ => std::process::exit(1),

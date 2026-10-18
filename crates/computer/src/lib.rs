@@ -1,4 +1,5 @@
 //! Owned, offline Docker computers. No host tool fallback, mounts or model credentials.
+pub mod desktop;
 pub mod engine;
 #[cfg(unix)]
 mod mcp;
@@ -23,6 +24,8 @@ pub struct ComputerSpec {
     pub memory_bytes: u64,
     pub cpu_millis: u32,
     pub pids: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop: Option<desktop::ScreenConfig>,
 }
 impl ComputerSpec {
     pub fn new(image: impl Into<String>) -> Self {
@@ -31,9 +34,13 @@ impl ComputerSpec {
             memory_bytes: 256 * 1024 * 1024,
             cpu_millis: 1000,
             pids: 64,
+            desktop: None,
         }
     }
     pub fn validate(&self) -> Result<(), AgentError> {
+        if let Some(screen) = &self.desktop {
+            screen.validate()?;
+        }
         if !self
             .image
             .strip_prefix("sha256:")
@@ -540,7 +547,13 @@ impl<E: Engine> Computer<'_, E> {
         }
         let readonly = matches!(
             request,
-            GuestRequest::Probe | GuestRequest::Read { .. } | GuestRequest::List { .. }
+            GuestRequest::Probe
+                | GuestRequest::Read { .. }
+                | GuestRequest::List { .. }
+                | GuestRequest::Desktop {
+                    request: desktop::Request::Info | desktop::Request::Screenshot,
+                    ..
+                }
         );
         if self
             .record
@@ -560,6 +573,15 @@ impl<E: Engine> Computer<'_, E> {
             GuestRequest::Write { .. } => "write",
             GuestRequest::List { .. } => "list",
             GuestRequest::Shell { .. } => "shell",
+            GuestRequest::Desktop {
+                request: desktop::Request::Info,
+                ..
+            } => "desktop_info",
+            GuestRequest::Desktop {
+                request: desktop::Request::Screenshot,
+                ..
+            } => "desktop_screenshot",
+            GuestRequest::Desktop { .. } => "desktop_input",
         };
         if previous.is_none() {
             self.record.pending = Some(Pending {
@@ -605,6 +627,25 @@ impl<E: Engine> Computer<'_, E> {
                                             && output.stdout.len() + output.stderr.len()
                                                 <= 3 * FILE_LIMIT
                                     }
+                                    (
+                                        "desktop_info" | "desktop_screenshot" | "desktop_input",
+                                        GuestValue::Desktop { value },
+                                    ) => {
+                                        matches!(
+                                            (kind, value),
+                                            ("desktop_info", desktop::Reply::Info { .. })
+                                                | (
+                                                    "desktop_screenshot",
+                                                    desktop::Reply::Screenshot { .. }
+                                                )
+                                                | ("desktop_input", desktop::Reply::Applied)
+                                        ) && self
+                                            .record
+                                            .spec
+                                            .desktop
+                                            .as_ref()
+                                            .is_some_and(|s| value.validate(s).is_ok())
+                                    }
                                     _ => false,
                                 };
                                 if !valid {
@@ -620,7 +661,9 @@ impl<E: Engine> Computer<'_, E> {
                 });
         match reply {
             Ok(result) => {
-                if (kind == "shell" || kind == "write") && result.is_err() {
+                if (kind == "shell" || kind == "write" || kind.starts_with("desktop") && !readonly)
+                    && result.is_err()
+                {
                     self.abort_remote()?;
                     return Err(AgentError::State(
                         "guest effect failed; computer stopped; inspect effects",

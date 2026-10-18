@@ -100,6 +100,15 @@ impl Docker {
         input: &[u8],
         context: &TurnContext,
     ) -> Result<String, AgentError> {
+        self.command_limit(args, input, context, WIRE_LIMIT)
+    }
+    fn command_limit(
+        &self,
+        args: Vec<String>,
+        input: &[u8],
+        context: &TurnContext,
+        limit: usize,
+    ) -> Result<String, AgentError> {
         let mut env = BTreeMap::new();
         // Keep managed registry/proxy/CA selectors, never model credentials or endpoint overrides.
         for key in [
@@ -130,7 +139,7 @@ impl Docker {
                 cwd: "/".into(),
                 env,
                 timeout: context.remaining()?.min(Duration::from_secs(300)),
-                output_limit: WIRE_LIMIT,
+                output_limit: limit,
             },
             context,
             input,
@@ -185,6 +194,12 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
         "--workdir=/workspace".into(),
         format!("--entrypoint={GUEST}"),
     ]);
+    if let Some(screen) = &spec.desktop {
+        args.extend([
+            "--env".into(),
+            format!("NAMZU_DESKTOP_SCREEN={}x{}x24", screen.width, screen.height),
+        ]);
+    }
     for (key, value) in labels(record) {
         args.extend(["--label".into(), format!("{key}={value}")]);
     }
@@ -313,7 +328,18 @@ impl Engine for Docker {
             Operation::Exec { container, request } => {
                 let input = serde_json::to_vec(&request)
                     .map_err(|_| AgentError::Protocol("cannot encode guest request"))?;
-                let text = self.command(
+                let limit = if matches!(
+                    &request,
+                    GuestRequest::Desktop {
+                        request: crate::desktop::Request::Screenshot,
+                        ..
+                    }
+                ) {
+                    crate::desktop::SCREEN_WIRE
+                } else {
+                    WIRE_LIMIT
+                };
+                let text = self.command_limit(
                     argv(&[
                         "container",
                         "exec",
@@ -324,6 +350,7 @@ impl Engine for Docker {
                     ]),
                     &input,
                     context,
+                    limit,
                 )?;
                 Ok(Answer::Guest(serde_json::from_str(&text).map_err(
                     |_| AgentError::Protocol("invalid guest response; computer must stop"),

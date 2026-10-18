@@ -38,6 +38,9 @@ pub struct PalOptions {
     /// Pin a new Pal to guest tools. Existing profiles always keep their backend.
     #[arg(long)]
     pub guest: bool,
+    /// Explicit host control permission for owned-guest keyboard and mouse input.
+    #[arg(long)]
+    pub allow_input: bool,
     /// Explicit pinned local image: create a temporary computer for each turn.
     #[arg(long)]
     pub image: Option<String>,
@@ -149,7 +152,20 @@ enum Action {
 }
 #[derive(Subcommand)]
 enum ComputerAction {
-    Create,
+    Create {
+        #[arg(long)]
+        desktop: bool,
+        #[arg(long, requires = "desktop")]
+        width: Option<u16>,
+        #[arg(long, requires = "desktop")]
+        height: Option<u16>,
+    },
+    /// Execute a bounded desktop request from JSON; screenshot requires --output.
+    Desktop {
+        request: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     Show,
     Start,
     Stop,
@@ -924,13 +940,45 @@ fn computer(
     ctx: &TurnContext,
 ) -> Result<Value, AgentError> {
     let manager = o.manager(registry, id)?;
+    let mut prepared_desktop = if let ComputerAction::Desktop { request, output } = &action {
+        use namzu_computer::desktop::Request;
+        let request: Request = serde_json::from_slice(&transfer::read(request)?)
+            .map_err(|_| AgentError::Configuration("invalid desktop JSON request"))?;
+        if !request.readonly() && !o.allow_input {
+            return Err(AgentError::Configuration(
+                "--allow-input required for guest input",
+            ));
+        }
+        if matches!(request, Request::Screenshot) != output.is_some() {
+            return Err(AgentError::Configuration(
+                "only screenshot requires --output NEW_FILE",
+            ));
+        }
+        let record = manager
+            .snapshot()?
+            .ok_or(AgentError::State("owned computer required"))?;
+        request.validate(
+            record
+                .spec
+                .desktop
+                .as_ref()
+                .ok_or(AgentError::Configuration("desktop not configured"))?,
+        )?;
+        Some(request)
+    } else {
+        None
+    };
     match action {
         ComputerAction::Show => return Ok(json!(manager.snapshot()?)),
         ComputerAction::Cleanup => {
             manager.recover_cleanup(ctx)?;
             return Ok(json!({"cleaned":true}));
         }
-        ComputerAction::Create => {
+        ComputerAction::Create {
+            desktop,
+            width,
+            height,
+        } => {
             let pal = registry.get(&o.owner, id)?;
             let p: Profile = serde_json::from_str(&pal.route)
                 .map_err(|_| AgentError::Configuration("CLI profile required"))?;
@@ -940,19 +988,50 @@ fn computer(
             let image = o.image.as_ref().ok_or(AgentError::Configuration(
                 "--image sha256:ID required for computer create",
             ))?;
-            return Ok(json!(
-                manager
-                    .acquire(ComputerSpec::new(image), ctx)?
-                    .detach(ctx)?
-            ));
+            let mut spec = ComputerSpec::new(image);
+            if desktop {
+                spec.desktop = Some(namzu_computer::desktop::ScreenConfig {
+                    width: width.unwrap_or(1024),
+                    height: height.unwrap_or(768),
+                });
+            }
+            return Ok(json!(manager.acquire(spec, ctx)?.detach(ctx)?));
         }
         _ => (),
     }
-    let keep_running = matches!(action, ComputerAction::Start | ComputerAction::Restart);
+    let keep_running = matches!(
+        action,
+        ComputerAction::Start | ComputerAction::Restart | ComputerAction::Desktop { .. }
+    );
     let mut lease = manager.resume(ctx)?;
     lease.preserve_workspace_on_drop();
     let result = (|| -> Result<Value, AgentError> {
         Ok(match action {
+            ComputerAction::Desktop { request: _, output } => {
+                use base64::Engine as _;
+                use namzu_computer::desktop::Reply;
+                let request = prepared_desktop
+                    .take()
+                    .ok_or(AgentError::Configuration("desktop request missing"))?;
+                start_if_stopped(&mut lease, ctx)?;
+                match lease.desktop(request, ctx)? {
+                    Reply::Screenshot {
+                        width,
+                        height,
+                        png_base64,
+                    } => {
+                        let bytes = base64::engine::general_purpose::STANDARD
+                            .decode(png_base64)
+                            .map_err(|_| AgentError::Protocol("invalid screenshot"))?;
+                        transfer::write_new(
+                            &output.ok_or(AgentError::Configuration("output required"))?,
+                            &bytes,
+                        )?;
+                        json!({"width":width,"height":height,"bytes":bytes.len()})
+                    }
+                    value => json!(value),
+                }
+            }
             ComputerAction::Start => {
                 start_if_stopped(&mut lease, ctx)?;
                 json!({"started":true})

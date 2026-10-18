@@ -21,6 +21,8 @@ struct State {
     files: BTreeMap<String, Vec<u8>>,
     execs: usize,
     fail_create: bool,
+    screen: Option<namzu_computer::desktop::ScreenConfig>,
+    fail_desktop: bool,
     fail_start: bool,
     cancel_exec: bool,
     bad_reply: bool,
@@ -79,6 +81,7 @@ impl Engine for Mock {
                 Ok(Answer::Done)
             }
             Operation::Create { record } => {
+                s.screen = record.spec.desktop.clone();
                 s.container = Some(info(&record));
                 if s.fail_create {
                     Err(AgentError::State("fixture ambiguous create"))
@@ -129,6 +132,31 @@ impl Engine for Mock {
                     }));
                 }
                 let value = match request {
+                    GuestRequest::Desktop { request, .. } => {
+                        if s.fail_desktop {
+                            return Ok(Answer::Guest(GuestReply {
+                                version: 1,
+                                result: Err("fixture desktop failure".into()),
+                            }));
+                        }
+                        use namzu_computer::desktop::{Reply, Request};
+                        let screen = s.screen.as_ref().unwrap();
+                        let value = match request {
+                            Request::Info => Reply::Info {
+                                width: screen.width,
+                                height: screen.height,
+                                pointer_x: 0,
+                                pointer_y: 0,
+                            },
+                            Request::Screenshot => Reply::Screenshot {
+                                width: screen.width,
+                                height: screen.height,
+                                png_base64: STANDARD.encode(blank_png(screen.width, screen.height)),
+                            },
+                            _ => Reply::Applied,
+                        };
+                        GuestValue::Desktop { value }
+                    }
                     GuestRequest::Probe => GuestValue::Ready,
                     GuestRequest::Write { path, base64 } => {
                         s.files.insert(path, STANDARD.decode(base64).unwrap());
@@ -510,4 +538,211 @@ fn persistent_host_guard_preserves_files_and_stops_on_cancelled_setup_or_unwind(
     assert_eq!(state.files.get("answer").unwrap(), b"keep");
     drop(state);
     manager.recover_cleanup(&ctx()).unwrap();
+}
+
+fn blank_png(width: u16, height: u16) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    {
+        let mut e = png::Encoder::new(&mut bytes, width.into(), height.into());
+        e.set_color(png::ColorType::Rgb);
+        e.set_depth(png::BitDepth::Eight);
+        e.write_header()
+            .unwrap()
+            .write_image_data(&vec![0; usize::from(width) * usize::from(height) * 3])
+            .unwrap();
+    }
+    bytes
+}
+#[test]
+fn desktop_preflight_rejects_invalid_input_before_guest_exec() {
+    use namzu_computer::desktop::{Request, ScreenConfig};
+    let (_root, mock, manager) = setup();
+    let mut s = spec();
+    s.desktop = Some(ScreenConfig::default());
+    let mut c = manager.acquire(s, &ctx()).unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    for r in [
+        Request::Move { x: -1, y: 0 },
+        Request::Click {
+            x: 1024,
+            y: 0,
+            button: namzu_computer::desktop::Button::Left,
+        },
+        Request::Type { text: "ü".into() },
+        Request::Key {
+            keys: vec!["CTRL".into(), "bad".into()],
+        },
+        Request::Scroll {
+            horizontal: 0,
+            vertical: i8::MIN,
+        },
+    ] {
+        assert!(c.desktop(r, &ctx()).is_err());
+    }
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(c.snapshot().pending.is_none());
+}
+#[test]
+fn desktop_requires_explicit_spec_and_no_host_fallback() {
+    let (_root, mock, manager) = setup();
+    let mut c = manager.acquire(spec(), &ctx()).unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    assert!(
+        c.desktop(namzu_computer::desktop::Request::Info, &ctx())
+            .is_err()
+    );
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+}
+#[test]
+fn desktop_info_screenshot_and_input_round_trip() {
+    use namzu_computer::desktop::{Reply, Request, ScreenConfig};
+    let (_root, _mock, manager) = setup();
+    let mut s = spec();
+    s.desktop = Some(ScreenConfig::default());
+    let mut c = manager.acquire(s, &ctx()).unwrap();
+    assert!(matches!(
+        c.desktop(Request::Info, &ctx()).unwrap(),
+        Reply::Info { width: 1024, .. }
+    ));
+    assert!(matches!(
+        c.desktop(Request::Screenshot, &ctx()).unwrap(),
+        Reply::Screenshot { .. }
+    ));
+    assert!(matches!(
+        c.desktop(
+            Request::Key {
+                keys: vec!["CTRL".into(), "a".into()]
+            },
+            &ctx()
+        )
+        .unwrap(),
+        Reply::Applied
+    ));
+    assert!(c.snapshot().pending.is_none());
+}
+#[test]
+fn failed_input_stops_computer_and_retains_pending_without_replay() {
+    use namzu_computer::desktop::{Request, ScreenConfig};
+    let (_root, mock, manager) = setup();
+    let mut s = spec();
+    s.desktop = Some(ScreenConfig::default());
+    let mut c = manager.acquire(s, &ctx()).unwrap();
+    mock.0.lock().unwrap().fail_desktop = true;
+    assert!(c.desktop(Request::Move { x: 10, y: 20 }, &ctx()).is_err());
+    assert_eq!(c.snapshot().phase, Phase::Stopped);
+    assert_eq!(c.snapshot().pending.as_ref().unwrap().kind, "desktop_input");
+    mock.0.lock().unwrap().fail_desktop = false;
+    c.start(&ctx()).unwrap();
+    assert!(c.desktop(Request::Info, &ctx()).is_ok());
+    assert!(c.desktop(Request::Move { x: 10, y: 20 }, &ctx()).is_err());
+    c.acknowledge_uncertain().unwrap();
+    assert!(c.desktop(Request::Move { x: 10, y: 20 }, &ctx()).is_ok());
+}
+#[test]
+fn malformed_desktop_response_stops_and_fences_input() {
+    use namzu_computer::desktop::{Request, ScreenConfig};
+    let (_root, mock, manager) = setup();
+    let mut s = spec();
+    s.desktop = Some(ScreenConfig::default());
+    let mut c = manager.acquire(s, &ctx()).unwrap();
+    mock.0.lock().unwrap().bad_reply = true;
+    assert!(c.desktop(Request::Move { x: 10, y: 20 }, &ctx()).is_err());
+    assert_eq!(c.snapshot().phase, Phase::Stopped);
+    assert!(c.snapshot().pending.is_some());
+}
+#[test]
+fn screenshot_png_size_dimensions_and_crc_are_validated() {
+    use namzu_computer::desktop::{ScreenConfig, validate_png};
+    let s = ScreenConfig {
+        width: 320,
+        height: 240,
+    };
+    let bytes = blank_png(320, 240);
+    assert!(validate_png(&bytes, &s).is_ok());
+    assert!(validate_png(&bytes, &ScreenConfig::default()).is_err());
+    let mut bad = bytes.clone();
+    bad[40] ^= 255;
+    assert!(validate_png(&bad, &s).is_err());
+    assert!(validate_png(&vec![0; namzu_computer::desktop::SCREEN_BYTES + 1], &s).is_err());
+}
+#[test]
+fn desktop_key_and_text_limits_preserve_literal_input_and_redact_debug() {
+    use namzu_computer::desktop::{Request, ScreenConfig};
+    let s = ScreenConfig::default();
+    assert!(
+        Request::Type {
+            text: "aA!?\n\t $(literal)".into()
+        }
+        .validate(&s)
+        .is_ok()
+    );
+    for r in [
+        Request::Type {
+            text: "x".repeat(1025),
+        },
+        Request::Type { text: "a\0".into() },
+        Request::Key {
+            keys: vec!["CTRL".into(), "CTRL".into(), "a".into()],
+        },
+        Request::Key {
+            keys: vec!["a".into(), "CTRL".into()],
+        },
+    ] {
+        assert!(r.validate(&s).is_err());
+    }
+    assert!(
+        !format!(
+            "{:?}",
+            Request::Type {
+                text: "PRIVATE_INPUT".into()
+            }
+        )
+        .contains("PRIVATE_INPUT")
+    );
+}
+#[test]
+fn cancelled_desktop_input_stops_remote_work_and_never_replays() {
+    use namzu_computer::desktop::{Request, ScreenConfig};
+    let (_root, mock, manager) = setup();
+    let context = ctx();
+    let mut s = spec();
+    s.desktop = Some(ScreenConfig::default());
+    let mut c = manager.acquire(s, &context).unwrap();
+    mock.0.lock().unwrap().cancel_exec = true;
+    let before = mock.0.lock().unwrap().execs;
+    assert!(matches!(
+        c.desktop(
+            Request::Click {
+                x: 10,
+                y: 20,
+                button: namzu_computer::desktop::Button::Left
+            },
+            &context
+        ),
+        Err(AgentError::Cancelled)
+    ));
+    assert_eq!(c.snapshot().phase, Phase::Stopped);
+    assert_eq!(c.snapshot().pending.as_ref().unwrap().kind, "desktop_input");
+    assert!(c.desktop(Request::Move { x: 10, y: 20 }, &context).is_err());
+    assert_eq!(mock.0.lock().unwrap().execs, before + 1);
+}
+#[test]
+fn legacy_specs_are_headless_and_desktop_arguments_are_explicit() {
+    let old = serde_json::to_value(spec()).unwrap();
+    assert!(old.get("desktop").is_none());
+    assert!(
+        serde_json::from_value::<ComputerSpec>(old)
+            .unwrap()
+            .desktop
+            .is_none()
+    );
+    let (_root, _mock, manager) = setup();
+    let mut s = spec();
+    s.desktop = Some(namzu_computer::desktop::ScreenConfig {
+        width: 800,
+        height: 600,
+    });
+    let c = manager.acquire(s, &ctx()).unwrap();
+    let args = namzu_computer::engine::create_arguments(c.snapshot());
+    assert!(args.iter().any(|s| s == "NAMZU_DESKTOP_SCREEN=800x600x24"));
 }

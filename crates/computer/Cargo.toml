@@ -17,7 +17,13 @@ cap-std = "3"
 getrandom = "0.4"
 libc = "0.2"
 tempfile.workspace = true
+png = "0.17"
+x11rb = { version = "0.13", features = ["xtest"] }
 
 [[bin]]
 name = "namzu-guest"
 path = "src/bin/guest.rs"
+
+[[bin]]
+name = "namzu-desktop"
+path = "src/bin/desktop.rs"

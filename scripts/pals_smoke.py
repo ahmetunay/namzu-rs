@@ -27,7 +27,8 @@ def options(root, server):
 def command(binary, opts, *args, success=True):
     p = subprocess.run([str(binary), 'pal', *opts, *args], capture_output=True, env=environment(), timeout=40)
     assert (p.returncode == 0) == success, (p.stdout.decode(), p.stderr.decode())
-    return json.loads(p.stdout)['result']
+    response = json.loads(p.stdout)
+    return response['result'] if success else response
 
 
 def tasks(root, pal):
