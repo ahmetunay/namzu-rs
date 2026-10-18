@@ -33,6 +33,30 @@ pub struct Args {
 }
 #[derive(Subcommand)]
 enum Action {
+    /// Inspect or acknowledge abandoned tool effects; never replays them.
+    Recovery {
+        #[command(subcommand)]
+        action: RecoveryAction,
+    },
+    /// Connect, explicitly replace transport, then ping the new generation.
+    Reconnect {
+        server: String,
+        #[arg(long)]
+        approve: bool,
+        #[arg(long,default_value_t=300,value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+    },
+    /// Subscribe, receive bounded resource updates, explicitly unsubscribe, close.
+    Watch {
+        server: String,
+        uri: String,
+        #[arg(long)]
+        approve: bool,
+        #[arg(long,default_value_t=1,value_parser=clap::value_parser!(u32).range(1..=64))]
+        count: u32,
+        #[arg(long,default_value_t=300,value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+    },
     /// Explicit OAuth management; agent calls never start interactive login.
     Auth {
         #[command(subcommand)]
@@ -104,6 +128,16 @@ enum Action {
     },
 }
 #[derive(Subcommand)]
+enum RecoveryAction {
+    List,
+    /// Confirm external effects were inspected; local fence removal, no replay.
+    Acknowledge {
+        id: String,
+        #[arg(long, required = true)]
+        inspected: bool,
+    },
+}
+#[derive(Subcommand)]
 enum AuthAction {
     Login {
         server: String,
@@ -162,12 +196,101 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
                 | Action::Check { .. }
                 | Action::Discover { .. }
                 | Action::Auth { .. }
+                | Action::Reconnect { .. }
+                | Action::Watch { .. }
+                | Action::Recovery { .. }
         )
     {
         return Err(Error::Configuration);
     }
     let profile = args.profile.as_deref();
     match args.action {
+        Action::Recovery { action } => match action {
+            RecoveryAction::List => {
+                Ok(json!({"records":registry.recovery()?.list()?,"model_calls":0}))
+            }
+            RecoveryAction::Acknowledge { id, inspected } => {
+                if !inspected {
+                    return Err(Error::Configuration);
+                }
+                registry.recovery()?.acknowledge(&id)?;
+                Ok(json!({"acknowledged":true,"replayed":false}))
+            }
+        },
+        Action::Reconnect {
+            server,
+            approve,
+            timeout,
+        } => {
+            let ctx = TurnContext::new(Duration::from_secs(timeout), cancellation)?;
+            let mut manager = Manager::new(&registry, args.profile, project, ceiling, &ctx)?;
+            let result: Result<Value, Error> = (|| {
+                let p = admitted(manager.prepare_connect(&server)?, approve)?;
+                manager.execute(p, &ctx)?;
+                let old = manager.statuses()[0].generation;
+                let p = admitted(manager.prepare_reconnect(&server)?, approve)?;
+                manager.execute(p, &ctx)?;
+                let p = admitted(manager.prepare_call(&server, "ping", None)?, approve)?;
+                manager.execute(p, &ctx)?;
+                Ok(
+                    json!({"server":server,"previous_generation":old,"generation":manager.statuses()[0].generation,"replayed":false,"subscriptions_restored":false,"model_calls":0}),
+                )
+            })();
+            let cleanup = TurnContext::new(Duration::from_secs(5), Cancellation::default())?;
+            let closed = manager.close(&cleanup);
+            let value = result?;
+            closed?;
+            Ok(value)
+        }
+        Action::Watch {
+            server,
+            uri,
+            approve,
+            count,
+            timeout,
+        } => {
+            let ctx = TurnContext::new(Duration::from_secs(timeout), cancellation)?;
+            let mut manager = Manager::new(&registry, args.profile, project, ceiling, &ctx)?;
+            let result: Result<Value, Error> = (|| {
+                let p = admitted(manager.prepare_connect(&server)?, approve)?;
+                manager.execute(p, &ctx)?;
+                let params = Some(serde_json::Map::from_iter([("uri".into(), json!(uri))]));
+                let p = admitted(
+                    manager.prepare_call(&server, "resources/subscribe", params.clone())?,
+                    approve,
+                )?;
+                if !matches!(manager.execute(p, &ctx)?, Outcome::Reply(Ok(_))) {
+                    return Err(Error::Subscription);
+                }
+                let mut updates = manager.take_resource_updates(&server)?;
+                while updates.len() < count as usize {
+                    while manager.pop_notification().is_some() {}
+                    let p = admitted(manager.prepare_notifications(&server)?, approve)?;
+                    if matches!(
+                        manager.execute(p, &ctx)?,
+                        Outcome::Events { supported: false }
+                    ) {
+                        return Err(Error::Unsupported);
+                    }
+                    updates.extend(manager.take_resource_updates(&server)?);
+                }
+                let p = admitted(
+                    manager.prepare_call(&server, "resources/unsubscribe", params)?,
+                    approve,
+                )?;
+                if !matches!(manager.execute(p, &ctx)?, Outcome::Reply(Ok(_))) {
+                    return Err(Error::Subscription);
+                }
+                Ok(
+                    json!({"server":server,"updates":updates,"subscriptions":manager.subscriptions(&server)?.len(),"model_calls":0}),
+                )
+            })();
+            let cleanup = TurnContext::new(Duration::from_secs(5), Cancellation::default())?;
+            let closed = manager.close(&cleanup);
+            let value = result?;
+            closed?;
+            Ok(value)
+        }
         Action::Auth { action } => match action {
             AuthAction::Login {
                 server,

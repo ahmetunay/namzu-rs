@@ -26,9 +26,13 @@ pub enum Error {
     #[error("MCP server is not connected")]
     NotConnected,
     #[error(
-        "MCP server has uncertain effects; inspect abandoned requests before a new manager generation"
+        "MCP server has uncertain effects; inspect mcp recovery list and explicitly acknowledge --inspected; no replay"
     )]
     Uncertain,
+    #[error("MCP recovery record belongs to an active operation")]
+    RecoveryActive,
+    #[error("MCP subscription is invalid, missing or already present")]
+    Subscription,
     #[error("MCP server is already connected")]
     Connected,
     #[error(transparent)]
@@ -366,6 +370,9 @@ impl Registry {
         Ok(Self {
             store: PrivateStore::open(state)?.child("mcp")?,
         })
+    }
+    pub fn recovery(&self) -> Result<crate::recovery::Store, Error> {
+        crate::recovery::Store::new(self.store.child("recovery")?)
     }
     pub(crate) fn oauth_store(&self) -> Result<PrivateStore, Error> {
         Ok(self.store.child("oauth")?)

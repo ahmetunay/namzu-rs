@@ -113,6 +113,28 @@ impl<'a, L: Tools> AgentTools<'a, L> {
     pub fn manager_mut(&mut self) -> &mut Manager<'a> {
         &mut self.manager
     }
+    /// Explicitly rebuild model bindings after a host reconnect. Never starts
+    /// a transport, replays a call or retains old per-call approvals.
+    pub fn rebind(
+        &mut self,
+        servers: &[String],
+        allow: Option<&BTreeSet<String>>,
+        deny: &BTreeSet<String>,
+        ctx: &TurnContext,
+        admit: impl FnMut(Plan) -> Result<Permit, Error>,
+    ) -> Result<(), Error> {
+        self.bindings.clear();
+        self.approvals
+            .0
+            .try_borrow_mut()
+            .map_err(|_| AgentError::State("MCP approval busy"))?
+            .clear();
+        let result = self.load_inner(servers, allow, deny, ctx, admit, false);
+        if result.is_err() {
+            self.bindings.clear();
+        }
+        result
+    }
     /// Bootstrap explicit selected servers; host reviews connect and each page.
     pub fn load(
         &mut self,
@@ -120,7 +142,18 @@ impl<'a, L: Tools> AgentTools<'a, L> {
         allow: Option<&BTreeSet<String>>,
         deny: &BTreeSet<String>,
         ctx: &TurnContext,
+        admit: impl FnMut(Plan) -> Result<Permit, Error>,
+    ) -> Result<(), Error> {
+        self.load_inner(servers, allow, deny, ctx, admit, true)
+    }
+    fn load_inner(
+        &mut self,
+        servers: &[String],
+        allow: Option<&BTreeSet<String>>,
+        deny: &BTreeSet<String>,
+        ctx: &TurnContext,
         mut admit: impl FnMut(Plan) -> Result<Permit, Error>,
+        connect: bool,
     ) -> Result<(), Error> {
         if servers.len() > 8 {
             return Err(Error::Configuration);
@@ -130,8 +163,10 @@ impl<'a, L: Tools> AgentTools<'a, L> {
             if !seen.insert(server) {
                 return Err(Error::Configuration);
             }
-            let permission = admit(self.manager.prepare_connect(server)?)?;
-            self.manager.execute(permission, ctx)?;
+            if connect {
+                let permission = admit(self.manager.prepare_connect(server)?)?;
+                self.manager.execute(permission, ctx)?;
+            }
             for kind in [Kind::Tools, Kind::Resources, Kind::Prompts] {
                 // Absent/denied catalogues are not silently queried. Missing
                 // capability is distinguished from network/protocol failure.

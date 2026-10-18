@@ -9,7 +9,7 @@ use namzu_core::TurnContext;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -24,6 +24,7 @@ pub struct Plan {
     params: Option<Map<String, Value>>,
     decision: Decision,
     catalog_revision: Option<(Kind, u64)>,
+    generation: u64,
 }
 impl Plan {
     pub fn decision(&self) -> Decision {
@@ -63,6 +64,8 @@ pub enum Outcome {
 pub struct Status {
     pub server: String,
     pub phase: &'static str,
+    pub generation: u64,
+    pub subscriptions: usize,
 }
 enum Connection {
     #[cfg(unix)]
@@ -73,6 +76,9 @@ enum Connection {
 /// there is no implicit host execution/network fallback.
 #[cfg(unix)]
 pub trait GuestStdio {
+    fn recovery_scope(&self) -> String {
+        "custom-guest".into()
+    }
     fn check(&mut self, context: &TurnContext) -> Result<(), Error> {
         context.remaining()?;
         Ok(())
@@ -103,6 +109,10 @@ pub struct Manager<'a> {
     epochs: BTreeMap<(String, Kind), u64>,
     notices: VecDeque<(Notification, usize)>,
     notice_bytes: usize,
+    generations: BTreeMap<String, u64>,
+    subscriptions: BTreeMap<String, BTreeSet<String>>,
+    updated: BTreeMap<String, BTreeSet<String>>,
+    recovery_owner: Option<crate::recovery::Owner>,
     #[cfg(unix)]
     guest: Option<Box<dyn GuestStdio + 'a>>,
 }
@@ -134,6 +144,10 @@ impl<'a> Manager<'a> {
             epochs: BTreeMap::new(),
             notices: VecDeque::new(),
             notice_bytes: 0,
+            generations: BTreeMap::new(),
+            subscriptions: BTreeMap::new(),
+            updated: BTreeMap::new(),
+            recovery_owner: None,
             #[cfg(unix)]
             guest: None,
         })
@@ -187,6 +201,13 @@ impl<'a> Manager<'a> {
             self.resolved = resolved;
         }
         Ok(())
+    }
+    /// Explicit fresh transport; never replays calls or restores subscriptions.
+    pub fn prepare_reconnect(&mut self, server: &str) -> Result<Plan, Error> {
+        let mut plan = self.prepare(server, Some("connection/reconnect".into()), None)?;
+        let entry = self.resolved.servers.get(server).ok_or(Error::NotFound)?;
+        plan.decision = plan.decision.max(entry.decide("connect"));
+        Ok(plan)
     }
     pub fn prepare_connect(&mut self, server: &str) -> Result<Plan, Error> {
         self.prepare(server, None, None)
@@ -247,6 +268,7 @@ impl<'a> Manager<'a> {
             params,
             decision: entry.decide(&target),
             catalog_revision: None,
+            generation: *self.generations.get(server).unwrap_or(&0),
         })
     }
     pub fn execute(&mut self, permit: Permit, context: &TurnContext) -> Result<Outcome, Error> {
@@ -255,8 +277,10 @@ impl<'a> Manager<'a> {
         if !context.is_bounded_by(&self.parent) {
             return Err(Error::Configuration);
         }
-        let plan = permit.0;
-        if plan.owner != self.owner {
+        let mut plan = permit.0;
+        if plan.owner != self.owner
+            || plan.generation != *self.generations.get(&plan.server).unwrap_or(&0)
+        {
             return Err(Error::Stale);
         }
         let _lock = self.registry.lock()?;
@@ -286,7 +310,43 @@ impl<'a> Manager<'a> {
         if let Some(guest) = &mut self.guest {
             guest.check(&context)?;
         }
+        let target_key = self.recovery_target(&plan.server, &server)?;
+        if plan.method.as_deref() == Some("connection/reconnect") {
+            if entry.decide("connect") == Decision::Deny {
+                return Err(Error::Denied);
+            }
+            self.registry
+                .recovery()?
+                .check(&target_key, self.recovery_owner.as_ref())?;
+            self.retire_server(&plan.server)?;
+            self.abandoned.remove(&plan.server);
+            plan.method = None;
+        }
         if let Some(method) = plan.method {
+            self.validate_subscription(&plan.server, &method, plan.params.as_ref())?;
+            if !self.connections.contains_key(&plan.server) {
+                return Err(Error::NotConnected);
+            }
+            let ticket = if method == "tools/call" {
+                let store = self.registry.recovery()?;
+                if self.recovery_owner.is_none() {
+                    self.recovery_owner = Some(store.owner()?);
+                }
+                Some(store.begin(
+                    self.recovery_owner.as_ref().ok_or(Error::Configuration)?,
+                    target_key,
+                    plan.server.clone(),
+                    &plan.params,
+                )?)
+            } else {
+                None
+            };
+            let subscription_uri = plan
+                .params
+                .as_ref()
+                .and_then(|p| p.get("uri"))
+                .and_then(Value::as_str)
+                .map(String::from);
             let connection = self
                 .connections
                 .get_mut(&plan.server)
@@ -346,6 +406,25 @@ impl<'a> Manager<'a> {
                     result
                 }
             };
+            if let Ok(Outcome::Reply(Ok(_))) = &result
+                && let Some(uri) = subscription_uri
+            {
+                if method == "resources/subscribe" {
+                    self.subscriptions
+                        .entry(plan.server.clone())
+                        .or_default()
+                        .insert(uri);
+                } else if method == "resources/unsubscribe" {
+                    self.subscriptions
+                        .entry(plan.server.clone())
+                        .or_default()
+                        .remove(&uri);
+                    self.updated
+                        .entry(plan.server.clone())
+                        .or_default()
+                        .remove(&uri);
+                }
+            }
             let observed = self.observe(&plan.server, notices);
             if observed.is_err()
                 && let Some(connection) = self.connections.get_mut(&plan.server)
@@ -362,7 +441,14 @@ impl<'a> Manager<'a> {
                 observed?;
                 Ok(outcome)
             });
+            if let Some(ticket) = ticket
+                && let Err(error) = self.registry.recovery()?.finish(ticket, result.is_ok())
+            {
+                let _ = self.retire_server(&plan.server);
+                return Err(error);
+            }
             if result.is_err() {
+                self.fence_bindings(&plan.server);
                 self.invalidate_server(&plan.server);
                 self.revision += 1;
             }
@@ -380,6 +466,9 @@ impl<'a> Manager<'a> {
             }
             result
         } else {
+            self.registry
+                .recovery()?
+                .check(&target_key, self.recovery_owner.as_ref())?;
             if self.abandoned.contains_key(&plan.server) {
                 return Err(Error::Uncertain);
             }
@@ -446,6 +535,7 @@ impl<'a> Manager<'a> {
                     }
                 }
             };
+            self.fence_bindings(&plan.server);
             self.connections.insert(plan.server, connection);
             Ok(Outcome::Connected)
         }
@@ -459,6 +549,8 @@ impl<'a> Manager<'a> {
             .iter()
             .map(|(name, connection)| Status {
                 server: name.clone(),
+                generation: *self.generations.get(name).unwrap_or(&0),
+                subscriptions: self.subscriptions.get(name).map_or(0, BTreeSet::len),
                 phase: match connection {
                     #[cfg(unix)]
                     Connection::Stdio(client) => {
@@ -481,6 +573,12 @@ impl<'a> Manager<'a> {
     }
     /// Explicit cleanup, independent of an expired task/permission snapshot.
     pub fn close(&mut self, context: &TurnContext) -> Result<(), Error> {
+        self.owner = OWNERS.fetch_add(1, Ordering::Relaxed);
+        self.subscriptions.clear();
+        self.updated.clear();
+        for generation in self.generations.values_mut() {
+            *generation += 1;
+        }
         self.catalogs.clear();
         self.catalog_sizes.clear();
         self.catalog_bytes = 0;
@@ -634,12 +732,33 @@ impl Manager<'_> {
                     *self.epochs.entry((server.into(), kind)).or_default() += 1;
                 }
             }
+            if method == "notifications/resources/updated" {
+                let uri = params
+                    .as_ref()
+                    .and_then(|p| p.get("uri"))
+                    .and_then(Value::as_str)
+                    .filter(|s| {
+                        !s.is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
+                    })
+                    .ok_or(Error::Subscription)?;
+                if self
+                    .subscriptions
+                    .get(server)
+                    .is_some_and(|s| s.contains(uri))
+                {
+                    self.updated
+                        .entry(server.into())
+                        .or_default()
+                        .insert(uri.into());
+                }
+            }
             // Unknown/progress/resource-updated notifications remain bounded inert
             // data. They never open a URI, execute a tool, or auto-refresh a list.
             self.notice_bytes += size;
             self.notices.push_back((
                 Notification {
                     server: server.into(),
+                    generation: *self.generations.get(server).unwrap_or(&0),
                     method,
                     params,
                 },
@@ -806,5 +925,107 @@ impl Manager<'_> {
         }
         plan.catalog_revision = Some((kind, catalog.revision));
         Ok(plan)
+    }
+}
+
+impl Manager<'_> {
+    fn recovery_target(&self, name: &str, server: &crate::config::Server) -> Result<String, Error> {
+        use sha2::{Digest, Sha256};
+        let mut location = "host".to_string();
+        #[cfg(unix)]
+        if let Some(guest) = &self.guest {
+            location = format!("guest:{}", guest.recovery_scope());
+        }
+        let bytes = serde_json::to_vec(&(name, &server.transport, &server.oauth, location))
+            .map_err(|_| Error::Configuration)?;
+        Ok(format!("{:x}", Sha256::digest(bytes)))
+    }
+    fn fence_bindings(&mut self, server: &str) {
+        *self.generations.entry(server.into()).or_default() += 1;
+        self.subscriptions.remove(server);
+        self.updated.remove(server);
+        self.invalidate_server(server);
+        self.notices.retain(|(n, _)| n.server != server);
+        self.notice_bytes = self.notices.iter().map(|(_, size)| size).sum();
+    }
+    fn retire_server(&mut self, server: &str) -> Result<(), Error> {
+        self.fence_bindings(server);
+        if let Some(connection) = self.connections.remove(server) {
+            match connection {
+                #[cfg(unix)]
+                Connection::Stdio(mut c) => {
+                    c.close();
+                }
+                Connection::Http(mut c) => {
+                    let cleanup = TurnContext::new(
+                        Duration::from_secs(2),
+                        namzu_core::Cancellation::default(),
+                    )?;
+                    c.close(&cleanup)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn validate_subscription(
+        &self,
+        server: &str,
+        method: &str,
+        params: Option<&Map<String, Value>>,
+    ) -> Result<(), Error> {
+        if !["resources/subscribe", "resources/unsubscribe"].contains(&method) {
+            return Ok(());
+        }
+        if !self
+            .capabilities(server)?
+            .resources
+            .is_some_and(|c| c.subscribe == Some(true))
+        {
+            return Err(crate::Error::Capability.into());
+        }
+        let p = params.ok_or(Error::Subscription)?;
+        let uri = p
+            .get("uri")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control))
+            .ok_or(Error::Subscription)?;
+        if p.keys().any(|key| key != "uri" && key != "_meta")
+            || p.get("_meta").is_some_and(|v| !v.is_object())
+        {
+            return Err(Error::Subscription);
+        }
+        let subs = self.subscriptions.get(server);
+        let exists = subs.is_some_and(|s| s.contains(uri));
+        if method == "resources/subscribe" && (exists || subs.map_or(0, BTreeSet::len) >= 128)
+            || method == "resources/unsubscribe" && !exists
+        {
+            return Err(Error::Subscription);
+        }
+        Ok(())
+    }
+    pub fn subscriptions(&mut self, server: &str) -> Result<Vec<String>, Error> {
+        let _lock = self.registry.lock()?;
+        self.refresh()?;
+        if !self.resolved.servers.contains_key(server) {
+            return Err(Error::NotFound);
+        }
+        Ok(self
+            .subscriptions
+            .get(server)
+            .map(|s| s.iter().cloned().collect())
+            .unwrap_or_default())
+    }
+    pub fn take_resource_updates(&mut self, server: &str) -> Result<Vec<String>, Error> {
+        let _lock = self.registry.lock()?;
+        self.refresh()?;
+        if !self.resolved.servers.contains_key(server) {
+            return Err(Error::NotFound);
+        }
+        Ok(self
+            .updated
+            .remove(server)
+            .unwrap_or_default()
+            .into_iter()
+            .collect())
     }
 }

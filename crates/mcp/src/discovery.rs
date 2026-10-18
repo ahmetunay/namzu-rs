@@ -422,6 +422,7 @@ fn content(value: &Content) -> Result<(), Error> {
 #[derive(Clone, Debug, Serialize)]
 pub struct Notification {
     pub server: String,
+    pub generation: u64,
     pub method: String,
     pub params: Option<Map<String, Value>>,
 }

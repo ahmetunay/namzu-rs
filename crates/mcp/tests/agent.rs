@@ -570,3 +570,65 @@ fn guest_switch_retires_host_connection_and_old_permit() {
     ));
     assert_eq!(tool_calls(root.path()), 0);
 }
+#[test]
+fn explicit_rebind_requires_new_approvals_and_failed_rebind_has_no_old_tools() {
+    let root = tempfile::tempdir().unwrap();
+    let r = registry(root.path(), "normal", true);
+    let ctx = ctx();
+    let manager = Manager::new(
+        &r,
+        None,
+        None,
+        Policy {
+            require_approval: false,
+            ..Policy::default()
+        },
+        &ctx,
+    )
+    .unwrap();
+    let approvals = Approvals::default();
+    let mut tools = AgentTools::new(Local(Rc::new(Cell::new(0))), manager, approvals.clone());
+    tools
+        .load(&["fixture".into()], None, &Default::default(), &ctx, |p| {
+            p.approve()
+        })
+        .unwrap();
+    let pending = call(
+        "old",
+        &alias("fixture", Kind::Tools, "read"),
+        json!({"path":"a"}),
+    );
+    approvals.grant(&pending).unwrap();
+    let p = tools
+        .manager_mut()
+        .prepare_reconnect("fixture")
+        .unwrap()
+        .approve()
+        .unwrap();
+    tools.manager_mut().execute(p, &ctx).unwrap();
+    assert!(tools.validate(&pending, &ctx).is_err());
+    tools
+        .rebind(&["fixture".into()], None, &Default::default(), &ctx, |p| {
+            p.approve()
+        })
+        .unwrap();
+    assert!(tools.call(&pending, &ctx).unwrap().is_error);
+    assert_eq!(tool_calls(root.path()), 0);
+    approvals.grant(&pending).unwrap();
+    assert!(!tools.call(&pending, &ctx).unwrap().is_error);
+    assert_eq!(tool_calls(root.path()), 1);
+    assert!(
+        tools
+            .rebind(&["fixture".into()], None, &Default::default(), &ctx, |_| {
+                Err(namzu_mcp::config::Error::Denied)
+            })
+            .is_err()
+    );
+    assert!(
+        !tools
+            .definitions()
+            .iter()
+            .any(|d| d.name.starts_with("mcp_"))
+    );
+    tools.close(&ctx).unwrap();
+}

@@ -698,3 +698,263 @@ fn managed_ca_and_https_connect_proxy_are_used() {
 fn tls_verification_rejects_untrusted_proxy_certificate() {
     proxy_tls_fixture(false);
 }
+fn manager_registry(root: &std::path::Path, url: &str) -> namzu_mcp::config::Registry {
+    let r = namzu_mcp::config::Registry::open(root).unwrap();
+    r.replace(namzu_mcp::config::Document::parse(json!({"version":1,"default_profile":"default","profiles":{"default":{"servers":{"fixture":{"transport":{"type":"http","url":url},"policy":{"require_approval":false}}}}}}).to_string().as_bytes()).unwrap()).unwrap();
+    r
+}
+fn manager_ceiling() -> namzu_mcp::config::Policy {
+    namzu_mcp::config::Policy {
+        require_approval: false,
+        ..Default::default()
+    }
+}
+#[test]
+fn manager_session_expiry_reconnect_is_fresh_and_does_not_replay_rpc() {
+    use namzu_mcp::manager::Manager;
+    let s = Server::new(vec![
+        Box::new(|r| initialized(r, "MCP-Session-Id: old\r\n")),
+        Box::new(|_| reply(202, "", vec![])),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "ping");
+            reply(404, "", vec![])
+        }),
+        Box::new(|r| {
+            assert_eq!(r.method, "DELETE");
+            reply(404, "", vec![])
+        }),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "initialize");
+            assert!(!r.headers.contains("mcp-session-id"));
+            initialized(r, "MCP-Session-Id: fresh\r\n")
+        }),
+        Box::new(|_| reply(202, "", vec![])),
+        Box::new(|r| {
+            assert!(r.headers.contains("mcp-session-id: fresh"));
+            json_reply(json!({"jsonrpc":"2.0","id":r.body["id"],"result":{}}))
+        }),
+        Box::new(|r| {
+            assert_eq!(r.method, "DELETE");
+            reply(200, "", vec![])
+        }),
+    ]);
+    let root = tempfile::tempdir().unwrap();
+    let r = manager_registry(root.path(), &s.url);
+    let c = context();
+    let mut m = Manager::new(&r, None, None, manager_ceiling(), &c).unwrap();
+    let p = m.prepare_connect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_call("fixture", "ping", None)
+        .unwrap()
+        .permit()
+        .unwrap();
+    assert!(m.execute(p, &c).is_err());
+    let p = m.prepare_reconnect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_call("fixture", "ping", None)
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    m.close(&c).unwrap();
+    let requests = s.finish();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.body["method"] == "ping")
+            .count(),
+        2
+    );
+    assert!(r.recovery().unwrap().list().unwrap().is_empty());
+}
+fn resource_initialized(r: &Request) -> Reply {
+    json_reply(
+        json!({"jsonrpc":"2.0","id":r.body["id"],"result":{"protocolVersion":"2025-11-25","capabilities":{"resources":{"subscribe":true}},"serverInfo":{"name":"independent-http-resource-peer","version":"1"}}}),
+    )
+}
+#[test]
+fn manager_http_subscription_sse_and_unsubscribe_use_one_generation() {
+    use namzu_mcp::manager::Manager;
+    let s = Server::new(vec![
+        Box::new(resource_initialized),
+        Box::new(|_| reply(202, "", vec![])),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "resources/subscribe");
+            json_reply(json!({"jsonrpc":"2.0","id":r.body["id"],"result":{}}))
+        }),
+        Box::new(|r| {
+            assert_eq!(r.method, "GET");
+            assert!(!r.headers.contains("last-event-id"));
+            reply(200,"Content-Type: text/event-stream\r\n",b"id: event-1\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/resources/updated\",\"params\":{\"uri\":\"mem://data\"}}\n\n".to_vec())
+        }),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "resources/unsubscribe");
+            json_reply(json!({"jsonrpc":"2.0","id":r.body["id"],"result":{}}))
+        }),
+    ]);
+    let root = tempfile::tempdir().unwrap();
+    let r = manager_registry(root.path(), &s.url);
+    let c = context();
+    let mut m = Manager::new(&r, None, None, manager_ceiling(), &c).unwrap();
+    let p = m.prepare_connect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    let params = Some(json!({"uri":"mem://data"}).as_object().unwrap().clone());
+    let p = m
+        .prepare_call("fixture", "resources/subscribe", params.clone())
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_notifications("fixture")
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    assert_eq!(
+        m.take_resource_updates("fixture").unwrap(),
+        vec!["mem://data"]
+    );
+    assert_eq!(
+        m.pop_notification().unwrap().generation,
+        m.statuses()[0].generation
+    );
+    let p = m
+        .prepare_call("fixture", "resources/unsubscribe", params)
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    assert!(m.subscriptions("fixture").unwrap().is_empty());
+    m.close(&c).unwrap();
+    assert_eq!(s.finish().len(), 5);
+}
+#[test]
+fn http_tool_401_is_durable_uncertain_and_cannot_reconnect_automatically() {
+    use namzu_mcp::{config::Error as ManagerError, manager::Manager};
+    let mut steps = handshake();
+    steps.push(Box::new(|r| {
+        assert_eq!(r.body["method"], "tools/call");
+        reply(401, "", b"DO_NOT_PRINT_ERROR_SECRET".to_vec())
+    }));
+    steps.push(Box::new(|r| {
+        assert_eq!(r.method, "DELETE");
+        reply(200, "", vec![])
+    }));
+    let s = Server::new(steps);
+    let root = tempfile::tempdir().unwrap();
+    let r = manager_registry(root.path(), &s.url);
+    let c = context();
+    let mut m = Manager::new(&r, None, None, manager_ceiling(), &c).unwrap();
+    let p = m.prepare_connect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_call(
+            "fixture",
+            "tools/call",
+            Some(
+                json!({"name":"effect","arguments":{}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .unwrap()
+        .permit()
+        .unwrap();
+    assert!(m.execute(p, &c).is_err());
+    let p = m.prepare_reconnect("fixture").unwrap().permit().unwrap();
+    assert!(matches!(m.execute(p, &c), Err(ManagerError::Uncertain)));
+    assert!(r.recovery().unwrap().list().unwrap()[0].uncertain);
+    m.close(&c).unwrap();
+    assert_eq!(s.finish().len(), 4);
+}
+#[test]
+fn sse_eof_discards_subscriptions_and_requires_explicit_fresh_stream() {
+    use namzu_mcp::manager::Manager;
+    fn notification() -> Reply {
+        reply(200,"Content-Type: text/event-stream\r\n",b"data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/resources/updated\",\"params\":{\"uri\":\"mem://data\"}}\n\n".to_vec())
+    }
+    let s = Server::new(vec![
+        Box::new(resource_initialized),
+        Box::new(|_| reply(202, "", vec![])),
+        Box::new(|r| json_reply(response(r))),
+        Box::new(|r| {
+            assert_eq!(r.method, "GET");
+            notification()
+        }),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "initialize");
+            resource_initialized(r)
+        }),
+        Box::new(|_| reply(202, "", vec![])),
+        Box::new(|r| {
+            assert_eq!(r.body["method"], "resources/subscribe");
+            json_reply(response(r))
+        }),
+        Box::new(|r| {
+            assert_eq!(r.method, "GET");
+            notification()
+        }),
+    ]);
+    let root = tempfile::tempdir().unwrap();
+    let r = manager_registry(root.path(), &s.url);
+    let c = context();
+    let mut m = Manager::new(&r, None, None, manager_ceiling(), &c).unwrap();
+    let p = m.prepare_connect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    let params = Some(json!({"uri":"mem://data"}).as_object().unwrap().clone());
+    let p = m
+        .prepare_call("fixture", "resources/subscribe", params.clone())
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_notifications("fixture")
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    assert_eq!(
+        m.take_resource_updates("fixture").unwrap(),
+        vec!["mem://data"]
+    );
+    let p = m
+        .prepare_notifications("fixture")
+        .unwrap()
+        .permit()
+        .unwrap();
+    assert!(m.execute(p, &c).is_err());
+    assert!(m.subscriptions("fixture").unwrap().is_empty());
+    assert_eq!(s.requests.lock().unwrap().len(), 4);
+    let p = m.prepare_reconnect("fixture").unwrap().permit().unwrap();
+    m.execute(p, &c).unwrap();
+    assert!(m.subscriptions("fixture").unwrap().is_empty());
+    let p = m
+        .prepare_call("fixture", "resources/subscribe", params)
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    let p = m
+        .prepare_notifications("fixture")
+        .unwrap()
+        .permit()
+        .unwrap();
+    m.execute(p, &c).unwrap();
+    assert_eq!(
+        m.take_resource_updates("fixture").unwrap(),
+        vec!["mem://data"]
+    );
+    m.close(&c).unwrap();
+    assert_eq!(
+        s.finish()
+            .iter()
+            .filter(|r| r.body["method"] == "resources/subscribe")
+            .count(),
+        2
+    );
+}

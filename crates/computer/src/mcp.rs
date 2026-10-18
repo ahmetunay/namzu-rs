@@ -84,6 +84,10 @@ impl Computer<'_, Docker> {
     }
 }
 impl namzu_mcp::manager::GuestStdio for Bridge<'_> {
+    fn recovery_scope(&self) -> String {
+        self.tools.borrow().computer().snapshot().container.clone()
+    }
+
     fn check(&mut self, ctx: &TurnContext) -> Result<(), namzu_mcp::config::Error> {
         self.tools
             .try_borrow()
