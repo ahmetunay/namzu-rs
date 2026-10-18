@@ -1,5 +1,6 @@
 //! Bounded MCP protocol, Unix stdio and Streamable HTTP transports. The protocol
 //! itself performs no I/O. No uncertain request is automatically retried.
+pub mod agent;
 pub mod config;
 pub mod discovery;
 pub mod http;

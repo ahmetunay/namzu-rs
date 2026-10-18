@@ -1,6 +1,6 @@
 use crate::config::Config;
 use clap::Args;
-use namzu_core::{AgentError, Cancellation, Limits, Message, Turn, run_history};
+use namzu_core::{AgentError, Cancellation, Limits, Message, Turn, run_history_in_context};
 use namzu_provider::OpenAiCompatible;
 use namzu_session::{Journal, PrivateStore, Session, SessionStatus, default_state_dir, new_id};
 use namzu_tools::{TerminalTools, ToolPolicy};
@@ -22,6 +22,11 @@ pub struct ExecArgs {
 pub struct RunOptions {
     #[arg(long, default_value = ".")]
     pub cwd: PathBuf,
+    #[command(flatten)]
+    pub mcp: crate::mcp_runtime::Selection,
+    /// Explicit noninteractive grant for MCP connect/discovery and per-call asks.
+    #[arg(long)]
+    pub mcp_approve: bool,
     #[arg(long)]
     pub model: Option<String>,
     #[arg(long)]
@@ -90,15 +95,19 @@ pub fn execute_observed(
             .cwd
             .canonicalize()
             .map_err(|_| AgentError::Configuration("cannot open workspace"))?;
-        let route = provider.route(
-            &config,
-            &namzu_core::TurnContext::new(
-                Duration::from_secs(config.timeout)
-                    .checked_sub(started.elapsed())
-                    .ok_or(AgentError::Timeout)?,
-                cancellation.clone(),
-            )?,
+        let context = namzu_core::TurnContext::new(
+            Duration::from_secs(config.timeout)
+                .checked_sub(started.elapsed())
+                .ok_or(AgentError::Timeout)?,
+            cancellation.clone(),
         )?;
+        let provider_route = provider.route(&config, &context)?;
+        let mcp_identity = crate::mcp_runtime::identity(&state_dir, &args.mcp, &context)?;
+        let route = if mcp_identity.is_null() {
+            provider_route
+        } else {
+            serde_json::json!({"provider_route":serde_json::from_str::<serde_json::Value>(&provider_route).map_err(|_|AgentError::Protocol("invalid route"))?,"mcp":mcp_identity}).to_string()
+        };
         let id = args.resume.clone().unwrap_or_else(new_id);
         let _lock = store.lock(&id)?;
         let mut session = if args.resume.is_some() {
@@ -109,20 +118,20 @@ pub fn execute_observed(
             Session::new(id.clone(), cwd.clone(), route)?
         };
         session_id = Some(id);
-        let allow = match (config.tool_allow, args.tool_allow) {
+        let allow = match (config.tool_allow.clone(), args.tool_allow.clone()) {
             (Some(a), Some(b)) => Some(a.intersection(&b.into_iter().collect()).cloned().collect()),
             (Some(a), None) => Some(a),
             (None, Some(b)) => Some(b.into_iter().collect()),
             (None, None) => None,
         };
-        config.tool_deny.extend(args.tool_deny);
+        config.tool_deny.extend(args.tool_deny.iter().cloned());
         let mut tools = TerminalTools::new(
             &cwd,
             ToolPolicy {
                 allow_write: args.allow_write,
                 allow_shell: args.allow_shell,
-                allow,
-                deny: config.tool_deny,
+                allow: allow.clone(),
+                deny: config.tool_deny.clone(),
             },
         )
         .map_err(|_| AgentError::Configuration("cannot open workspace tools"))?;
@@ -130,28 +139,71 @@ pub fn execute_observed(
         messages.push(Message::User { content: prompt });
         session.status = SessionStatus::Running;
         session.save(&store)?;
-        let turn = run_history(
-            &mut provider,
-            &mut tools,
-            messages,
-            Limits {
-                timeout: Duration::from_secs(config.timeout)
-                    .checked_sub(started.elapsed())
-                    .filter(|value| !value.is_zero())
-                    .ok_or(AgentError::Timeout)?,
-                max_steps: config.max_steps,
-                max_tool_calls: config.max_tool_calls,
-                max_text_bytes: config.max_text_bytes,
-            },
-            cancellation,
-            &mut PresentationObserver {
+        let turn = (|| {
+            let mut observer = PresentationObserver {
                 journal: Journal {
                     store: &store,
                     session: &mut session,
                 },
                 events,
-            },
-        );
+            };
+            let limits = Limits {
+                timeout: Duration::from_secs(config.timeout),
+                max_steps: config.max_steps,
+                max_tool_calls: config.max_tool_calls,
+                max_text_bytes: config.max_text_bytes,
+            };
+            if args.mcp.servers.is_empty() {
+                return run_history_in_context(
+                    &mut provider,
+                    &mut tools,
+                    messages,
+                    limits,
+                    &context,
+                    &mut observer,
+                );
+            }
+            let registry =
+                namzu_mcp::config::Registry::open(&state_dir).map_err(crate::mcp_runtime::error)?;
+            let manager = crate::mcp_runtime::manager(&registry, &args.mcp, &context)?;
+            let approvals = namzu_mcp::agent::Approvals::default();
+            let explicit = args.mcp_approve || observer.events.supports_approval();
+            let mut tools = crate::mcp_runtime::load(
+                tools,
+                manager,
+                crate::mcp_runtime::Admission {
+                    selection: &args.mcp,
+                    allow: allow.as_ref(),
+                    deny: &config.tool_deny,
+                    explicit: args.mcp_approve,
+                },
+                approvals.clone(),
+                observer.events,
+                &context,
+            )?;
+            let result = run_history_in_context(
+                &mut provider,
+                &mut tools,
+                messages,
+                limits,
+                &context,
+                &mut namzu_mcp::agent::ApprovedObserver {
+                    inner: &mut observer,
+                    approvals,
+                    explicit,
+                },
+            );
+            let cleanup =
+                namzu_core::TurnContext::new(Duration::from_secs(5), Cancellation::default())?;
+            let closed = tools.close(&cleanup).map_err(crate::mcp_runtime::error);
+            match result {
+                Err(e) => Err(e),
+                Ok(turn) => {
+                    closed?;
+                    Ok(turn)
+                }
+            }
+        })();
         session.status = if turn.is_ok() {
             SessionStatus::Complete
         } else {
@@ -253,6 +305,9 @@ struct PresentationObserver<'a, 'b> {
     events: &'b mut dyn namzu_core::EventSink,
 }
 impl namzu_core::Observer for PresentationObserver<'_, '_> {
+    fn supports_approval(&self) -> bool {
+        self.events.supports_approval()
+    }
     fn approve(
         &mut self,
         call: &namzu_core::ToolCall,

@@ -183,6 +183,8 @@ struct Profile {
     effort: Option<String>,
     identity: String,
     guest: bool,
+    #[serde(default)]
+    mcp: serde_json::Value,
 }
 impl PalOptions {
     fn state(&self) -> Result<PathBuf, AgentError> {
@@ -241,6 +243,7 @@ impl PalOptions {
             effort: self.run.effort.clone(),
             identity: driver.route(&c, ctx)?,
             guest: self.guest || self.image.is_some(),
+            mcp: crate::mcp_runtime::identity(&self.state()?, &self.run.mcp, ctx)?,
         })
     }
     fn runtime(
@@ -256,6 +259,7 @@ impl PalOptions {
                 "Pal backend/version mismatch; create a new Pal explicitly",
             ));
         }
+        self.mcp_selection(&p, ctx)?;
         let mut o = self.run.clone();
         for (arg, saved) in [
             (&mut o.provider, &p.provider),
@@ -296,6 +300,29 @@ impl PalOptions {
         }
         Ok((driver, c, p))
     }
+    fn mcp_selection(
+        &self,
+        p: &Profile,
+        ctx: &TurnContext,
+    ) -> Result<crate::mcp_runtime::Selection, AgentError> {
+        let selected = if p.mcp.is_null() {
+            crate::mcp_runtime::Selection::default()
+        } else {
+            serde_json::from_value(p.mcp["selection"].clone())
+                .map_err(|_| AgentError::Configuration("invalid Pal MCP selection"))?
+        };
+        if !self.run.mcp.servers.is_empty() && self.run.mcp != selected {
+            return Err(AgentError::Configuration(
+                "MCP selection differs from pinned Pal profile",
+            ));
+        }
+        if crate::mcp_runtime::identity(&self.state()?, &selected, ctx)? != p.mcp {
+            return Err(AgentError::State(
+                "Pal MCP configuration changed; create a new profile",
+            ));
+        }
+        Ok(selected)
+    }
     fn manager(&self, registry: &Registry, id: &str) -> Result<ComputerManager, AgentError> {
         registry.computers(&self.owner, id, Docker::local(&self.docker)?)
     }
@@ -323,6 +350,9 @@ fn policy(o: &RunOptions, c: &Config) -> ToolPolicy {
 /// Forward approval as well as events; the Pal run supplies its own durable journal.
 struct Presentation<'a>(&'a mut dyn EventSink);
 impl Observer for Presentation<'_> {
+    fn supports_approval(&self) -> bool {
+        self.0.supports_approval()
+    }
     fn approve(&mut self, c: &ToolCall, ctx: &TurnContext) -> Result<bool, AgentError> {
         self.0.approve(c, ctx)
     }
@@ -338,6 +368,18 @@ impl Observer for Presentation<'_> {
         self.0.emit(e)
     }
 }
+struct ObserverSink<'a, O>(&'a mut O);
+impl<O: Observer> EventSink for ObserverSink<'_, O> {
+    fn supports_approval(&self) -> bool {
+        self.0.supports_approval()
+    }
+    fn approve(&mut self, c: &ToolCall, ctx: &TurnContext) -> Result<bool, AgentError> {
+        self.0.approve(c, ctx)
+    }
+    fn emit(&mut self, e: namzu_core::Event) -> Result<(), AgentError> {
+        self.0.event(e)
+    }
+}
 fn execute_run(
     o: &PalOptions,
     registry: &Registry,
@@ -348,11 +390,57 @@ fn execute_run(
 ) -> Result<Turn, AgentError> {
     let pal = run.definition().clone();
     let (mut driver, c, profile) = o.runtime(&pal, ctx)?;
-    let policy = policy(&o.run, &c);
+    let tool_policy = policy(&o.run, &c);
     if !profile.guest {
-        let mut tools = TerminalTools::new(&pal.workspace, policy)
+        let mut tools = TerminalTools::new(&pal.workspace, tool_policy.clone())
             .map_err(|_| AgentError::State("cannot open Pal tools"))?;
-        return run.execute(&mut driver, &mut tools, ctx, limits, observer);
+        let selection = o.mcp_selection(&profile, ctx)?;
+        if selection.servers.is_empty() || !pal.tools.iter().any(|s| s.starts_with("mcp_")) {
+            return run.execute(&mut driver, &mut tools, ctx, limits, observer);
+        }
+        let registry_mcp =
+            namzu_mcp::config::Registry::open(&o.state()?).map_err(crate::mcp_runtime::error)?;
+        let manager = crate::mcp_runtime::manager(&registry_mcp, &selection, ctx)?;
+        let approvals = namzu_mcp::agent::Approvals::default();
+        let current = policy(&o.run, &c);
+        let admitted = match current.allow {
+            Some(a) => pal.tools.intersection(&a).cloned().collect(),
+            None => pal.tools.clone(),
+        };
+        let mut tools = crate::mcp_runtime::load(
+            tools,
+            manager,
+            crate::mcp_runtime::Admission {
+                selection: &selection,
+                allow: Some(&admitted),
+                deny: &current.deny,
+                explicit: o.run.mcp_approve,
+            },
+            approvals.clone(),
+            &mut ObserverSink(observer),
+            ctx,
+        )?;
+        let explicit = o.run.mcp_approve || observer.supports_approval();
+        let result = run.execute(
+            &mut driver,
+            &mut tools,
+            ctx,
+            limits,
+            &mut namzu_mcp::agent::ApprovedObserver {
+                inner: observer,
+                approvals,
+                explicit,
+            },
+        );
+        let cleanup = TurnContext::new(Duration::from_secs(5), Cancellation::default())?;
+        let closed = tools.close(&cleanup).map_err(crate::mcp_runtime::error);
+        return match result {
+            Err(e) => Err(e),
+            Ok(turn) => {
+                closed?;
+                Ok(turn)
+            }
+        };
     }
     let manager = o.manager(registry, &pal.id)?;
     let mut computer = if let Some(image) = &o.image {
@@ -370,7 +458,67 @@ fn execute_run(
         ));
     }
     start_if_stopped(&mut computer, ctx)?;
-    let mut tools = GuestTools::new(computer, policy);
+    let selection = o.mcp_selection(&profile, ctx)?;
+    let mut tools = GuestTools::new(computer, tool_policy.clone());
+    if !selection.servers.is_empty() && pal.tools.iter().any(|s| s.starts_with("mcp_")) {
+        #[cfg(not(unix))]
+        return Err(AgentError::Configuration("guest MCP requires Unix"));
+        #[cfg(unix)]
+        {
+            let shared = namzu_computer::SharedGuestTools::new(tools);
+            let registry_mcp = namzu_mcp::config::Registry::open(&o.state()?)
+                .map_err(crate::mcp_runtime::error)?;
+            let manager = crate::mcp_runtime::manager(&registry_mcp, &selection, ctx)?
+                .with_guest(shared.launcher());
+            let approvals = namzu_mcp::agent::Approvals::default();
+            let admitted = match &tool_policy.allow {
+                Some(a) => pal.tools.intersection(a).cloned().collect(),
+                None => pal.tools.clone(),
+            };
+            let mut agent = crate::mcp_runtime::load(
+                shared.clone(),
+                manager,
+                crate::mcp_runtime::Admission {
+                    selection: &selection,
+                    allow: Some(&admitted),
+                    deny: &tool_policy.deny,
+                    explicit: o.run.mcp_approve,
+                },
+                approvals.clone(),
+                &mut ObserverSink(observer),
+                ctx,
+            )?;
+            let explicit = o.run.mcp_approve || observer.supports_approval();
+            let result = run.execute(
+                &mut driver,
+                &mut agent,
+                ctx,
+                limits,
+                &mut namzu_mcp::agent::ApprovedObserver {
+                    inner: observer,
+                    approvals,
+                    explicit,
+                },
+            );
+            let cleanup = TurnContext::new(Duration::from_secs(20), Cancellation::default())?;
+            let closed = agent.close(&cleanup).map_err(crate::mcp_runtime::error);
+            drop(agent);
+            shared.finish_mcp(result.is_ok() && closed.is_ok(), &cleanup)?;
+            let mut computer = shared.into_computer()?;
+            if o.image.is_none() || computer.snapshot().pending.is_some() {
+                computer.detach(&cleanup)?;
+            } else {
+                computer.close(&cleanup)?;
+            }
+            return match result {
+                Err(e) => Err(e),
+                Ok(turn) => {
+                    closed?;
+                    Ok(turn)
+                }
+            };
+        }
+    }
     let result = run.execute(&mut driver, &mut tools, ctx, limits, observer);
     let cleanup = TurnContext::new(Duration::from_secs(20), Cancellation::default())?;
     let mut computer = tools.into_computer();
@@ -484,7 +632,7 @@ pub fn run(args: PalArgs, cancellation: Cancellation) -> Result<bool, AgentError
             let p = o.new_profile(&ctx)?;
             let c = o.config()?;
             let policy = policy(&o.run, &c);
-            let tools = if p.guest {
+            let mut tools: BTreeSet<String> = if p.guest {
                 ["read_file", "list_files", "write_file", "shell"]
                     .into_iter()
                     .filter(|n| {
@@ -506,6 +654,20 @@ pub fn run(args: PalArgs, cancellation: Cancellation) -> Result<bool, AgentError
                     .map(|t| t.name)
                     .collect()
             };
+            if !p.mcp.is_null()
+                && let Some(allow) = &o.run.tool_allow
+            {
+                tools.extend(
+                    allow
+                        .iter()
+                        .filter(|s| {
+                            s.starts_with("mcp_")
+                                && !c.tool_deny.contains(*s)
+                                && !o.run.tool_deny.contains(*s)
+                        })
+                        .cloned(),
+                );
+            }
             json!(
                 registry.create(PalCreate {
                     owner: o.owner.clone(),

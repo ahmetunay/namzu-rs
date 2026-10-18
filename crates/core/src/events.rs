@@ -37,6 +37,10 @@ pub enum Event {
 /// A disconnected consumer may stop the turn. Hosts must keep callbacks bounded;
 /// they run synchronously and do not replace durable pre-effect checkpoints.
 pub trait EventSink {
+    /// True only for hosts that actually present permission prompts.
+    fn supports_approval(&self) -> bool {
+        false
+    }
     /// Host permission decision; must stay inside existing tool-policy ceilings.
     fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
         Ok(true)

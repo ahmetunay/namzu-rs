@@ -19,7 +19,7 @@ def reply(request, result):
 def tool(name):
     return {'name': name, 'description': 'untrusted definition',
             'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']},
-            'outputSchema': {'type': 'object'}}
+            'outputSchema': {'type': 'object', 'properties': {'answer': {'type': 'integer'}}, 'required': ['answer']}}
 
 for line in sys.stdin:
     request = json.loads(line)
@@ -87,7 +87,12 @@ for line in sys.stdin:
     elif method == 'prompts/list':
         reply(request, {'prompts': [{'name': 'review', 'arguments': [{'name': 'path', 'required': True}]}]})
     elif method == 'tools/call':
-        reply(request, {'content': [{'type': 'text', 'text': '42'}], 'structuredContent': {'answer': 42}})
+        if mode == 'agent_rpc_error':
+            emit({'jsonrpc': '2.0', 'id': request['id'], 'error': {'code': -32603, 'message': 'DO_NOT_LOG_REMOTE_SECRET'}})
+        elif mode == 'agent_tool_error':
+            reply(request, {'content': [{'type': 'text', 'text': 'ordinary tool failure'}], 'isError': True})
+        else:
+            reply(request, {'content': [{'type': 'text', 'text': '42'}], 'structuredContent': {'answer': 'wrong' if mode == 'agent_bad_output' else 42}})
     elif method == 'resources/read':
         reply(request, {'contents': [{'uri': request['params']['uri'], 'text': 'hello', 'mimeType': 'text/plain'}]})
     elif method == 'prompts/get':

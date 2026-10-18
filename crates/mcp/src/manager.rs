@@ -69,6 +69,20 @@ enum Connection {
     Stdio(Box<crate::stdio::Client>),
     Http(Box<crate::http::Client>),
 }
+/// Host supplied launcher for an owned guest. A guest manager rejects HTTP;
+/// there is no implicit host execution/network fallback.
+#[cfg(unix)]
+pub trait GuestStdio {
+    fn check(&mut self, context: &TurnContext) -> Result<(), Error> {
+        context.remaining()?;
+        Ok(())
+    }
+    fn launch(
+        &mut self,
+        spec: crate::stdio::Spec,
+        context: &TurnContext,
+    ) -> Result<crate::stdio::Spec, Error>;
+}
 /// Registry mutations are locked during admitted effects. Revocation blocks new
 /// admissions; an already admitted remote effect cannot be rolled back.
 /// No automatic start, reconnect, retry, process shell or host/guest fallback.
@@ -89,6 +103,8 @@ pub struct Manager<'a> {
     epochs: BTreeMap<(String, Kind), u64>,
     notices: VecDeque<(Notification, usize)>,
     notice_bytes: usize,
+    #[cfg(unix)]
+    guest: Option<Box<dyn GuestStdio + 'a>>,
 }
 impl<'a> Manager<'a> {
     pub fn new(
@@ -118,7 +134,31 @@ impl<'a> Manager<'a> {
             epochs: BTreeMap::new(),
             notices: VecDeque::new(),
             notice_bytes: 0,
+            #[cfg(unix)]
+            guest: None,
         })
+    }
+    #[cfg(unix)]
+    pub fn with_guest(mut self, launcher: Box<dyn GuestStdio + 'a>) -> Self {
+        // Switching execution location invalidates all host connections,
+        // discovered bindings and previously issued permits.
+        self.retire_connections();
+        self.owner = OWNERS.fetch_add(1, Ordering::Relaxed);
+        self.guest = Some(launcher);
+        self
+    }
+    pub fn identity(&self) -> &str {
+        &self.resolved.fingerprint
+    }
+    pub fn decision(&mut self, server: &str, target: &str) -> Result<Decision, Error> {
+        let _lock = self.registry.lock()?;
+        self.refresh()?;
+        Ok(self
+            .resolved
+            .servers
+            .get(server)
+            .ok_or(Error::NotFound)?
+            .decide(target))
     }
     fn retire_connections(&mut self) {
         // Cleanup is allowed even after project trust or parent context ends.
@@ -242,6 +282,10 @@ impl<'a> Manager<'a> {
         }
         let context = context.child(Duration::from_secs(entry.server.timeout_secs))?;
         let server = entry.server.clone();
+        #[cfg(unix)]
+        if let Some(guest) = &mut self.guest {
+            guest.check(&context)?;
+        }
         if let Some(method) = plan.method {
             let connection = self
                 .connections
@@ -348,6 +392,10 @@ impl<'a> Manager<'a> {
             let info = Implementation::new("namzu-rs", "0.1.0");
             let connection = match server.transport {
                 Transport::Http { url, bearer_env } => {
+                    #[cfg(unix)]
+                    if self.guest.is_some() {
+                        return Err(Error::Unsupported);
+                    }
                     let mut spec = crate::http::Spec::new(url);
                     if let Some(name) = bearer_env {
                         spec.bearer = Some(std::env::var(name).map_err(|_| Error::Configuration)?);
@@ -372,6 +420,9 @@ impl<'a> Manager<'a> {
                                 key,
                                 std::env::var(selector).map_err(|_| Error::Configuration)?,
                             );
+                        }
+                        if let Some(guest) = &mut self.guest {
+                            spec = guest.launch(spec, &context)?;
                         }
                         Connection::Stdio(Box::new(crate::stdio::Client::connect_in_context(
                             spec,

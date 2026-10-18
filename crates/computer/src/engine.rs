@@ -82,6 +82,9 @@ pub struct Docker {
     program: PathBuf,
 }
 impl Docker {
+    pub(crate) fn executable(&self) -> std::path::PathBuf {
+        self.program.clone()
+    }
     pub fn local(program: impl Into<PathBuf>) -> Result<Self, AgentError> {
         let program = program.into();
         if !program.is_absolute() {

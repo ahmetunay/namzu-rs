@@ -48,6 +48,9 @@ struct Permission {
 }
 struct ChannelEvents(SyncSender<UiMessage>);
 impl EventSink for ChannelEvents {
+    fn supports_approval(&self) -> bool {
+        true
+    }
     fn emit(&mut self, event: Event) -> Result<(), AgentError> {
         self.0
             .send(UiMessage::Event(event))

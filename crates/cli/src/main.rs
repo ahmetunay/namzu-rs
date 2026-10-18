@@ -2,6 +2,7 @@ mod benchmark;
 mod config;
 mod execute;
 mod mcp;
+mod mcp_runtime;
 mod pals;
 mod tui;
 use clap::{Parser, Subcommand};

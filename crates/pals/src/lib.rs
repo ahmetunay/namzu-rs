@@ -217,6 +217,13 @@ struct RestrictedTools<'a, T> {
     admitted: BTreeSet<String>,
 }
 impl<T: Tools> Tools for RestrictedTools<'_, T> {
+    fn validate(&mut self, call: &ToolCall, context: &TurnContext) -> Result<(), AgentError> {
+        if self.admitted.contains(&call.name) {
+            self.inner.validate(call, context)
+        } else {
+            context.remaining().map(|_| ())
+        }
+    }
     fn definitions(&self) -> Vec<ToolDefinition> {
         self.inner
             .definitions()

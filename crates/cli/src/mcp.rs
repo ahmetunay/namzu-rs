@@ -1,4 +1,4 @@
-//! Explicit management only; agent tool discovery/CLI execution integration is 3.6.
+//! Explicit MCP management; agent execution is wired separately by mcp_runtime.
 use clap::{Args as ClapArgs, Subcommand};
 use namzu_core::{Cancellation, TurnContext};
 use namzu_mcp::{
@@ -82,6 +82,9 @@ enum Action {
         /// Include untrusted definitions/descriptions/URI/schema data in JSON output.
         #[arg(long)]
         details: bool,
+        /// Print stable model function aliases for Pal/CLI tool allowlists.
+        #[arg(long)]
+        agent_names: bool,
         #[arg(long,default_value_t=300,value_parser=clap::value_parser!(u64).range(1..=300))]
         timeout: u64,
     },
@@ -211,6 +214,7 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
             kind,
             approve,
             details,
+            agent_names,
             timeout,
         } => {
             let kind = match kind.as_str() {
@@ -231,7 +235,11 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
             let closed = manager.close(&cleanup);
             let catalog = result?;
             closed?;
-            if details {
+            if agent_names {
+                Ok(
+                    json!({"server":server,"kind":kind,"items":catalog.items.iter().map(|item|json!({"alias":namzu_mcp::agent::alias(&server,kind,item.identity()),"identity":item.identity()})).collect::<Vec<_>>()}),
+                )
+            } else if details {
                 Ok(json!(catalog))
             } else {
                 Ok(

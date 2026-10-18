@@ -213,6 +213,10 @@ pub trait Provider {
 }
 
 pub trait Tools {
+    /// Validate a complete response batch before the first tool effect.
+    fn validate(&mut self, _: &ToolCall, context: &TurnContext) -> Result<(), AgentError> {
+        context.remaining().map(|_| ())
+    }
     fn definitions(&self) -> Vec<ToolDefinition>;
     fn call(&mut self, call: &ToolCall, context: &TurnContext) -> Result<ToolResult, AgentError>;
 }
@@ -250,6 +254,9 @@ pub struct Turn {
 /// Durable host checkpoint. `pending_call` is saved BEFORE a tool is invoked.
 /// A host must refuse automatic replay after an interrupted/uncertain effect.
 pub trait Observer {
+    fn supports_approval(&self) -> bool {
+        false
+    }
     fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
         Ok(true)
     }
@@ -459,6 +466,11 @@ fn run_history_inner(
                 ));
             }
             account(call.id.len() + call.name.len() + call.arguments.to_string().len())?;
+        }
+        for call in &response.tool_calls {
+            if names.contains(call.name.as_str()) {
+                tools.validate(call, &context)?;
+            }
         }
         messages.push(Message::Assistant {
             content: response.text.clone(),

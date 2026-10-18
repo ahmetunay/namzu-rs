@@ -12,6 +12,9 @@ impl<'a, E: Engine> GuestTools<'a, E> {
     pub fn new(computer: Computer<'a, E>, policy: GuestPolicy) -> Self {
         Self { computer, policy }
     }
+    pub fn computer(&self) -> &Computer<'a, E> {
+        &self.computer
+    }
     pub fn computer_mut(&mut self) -> &mut Computer<'a, E> {
         &mut self.computer
     }

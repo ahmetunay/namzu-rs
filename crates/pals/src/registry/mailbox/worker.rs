@@ -44,6 +44,9 @@ pub struct GuardedObserver<'a> {
     pub guard: &'a mut dyn Observer,
 }
 impl Observer for GuardedObserver<'_> {
+    fn supports_approval(&self) -> bool {
+        self.host.supports_approval()
+    }
     fn approve(&mut self, call: &ToolCall, context: &TurnContext) -> Result<bool, AgentError> {
         if !self.guard.approve(call, context)? {
             return Ok(false);
@@ -265,6 +268,9 @@ struct LeaseObserver<'a, 'r, C, O> {
     host: &'a mut O,
 }
 impl<C: MailboxClock, O: Observer> Observer for LeaseObserver<'_, '_, C, O> {
+    fn supports_approval(&self) -> bool {
+        self.host.supports_approval()
+    }
     fn approve(&mut self, call: &ToolCall, context: &TurnContext) -> Result<bool, AgentError> {
         self.mailbox.fence(self.lease)?;
         let approved = self.host.approve(call, context)?;

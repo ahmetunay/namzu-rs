@@ -149,3 +149,164 @@ fn node(value: &Value, root: &Value) -> Result<(), Error> {
     }
     Ok(())
 }
+
+/// Offline Draft 2020-12 validator. External retrieval is explicitly forbidden.
+pub struct Compiled(jsonschema::Validator);
+struct Offline;
+impl jsonschema::Retrieve for Offline {
+    fn retrieve(
+        &self,
+        _: &jsonschema::Uri<String>,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        Err("external schema retrieval disabled".into())
+    }
+}
+impl Compiled {
+    pub fn new(schema: &Map<String, Value>) -> Result<Self, Error> {
+        check(schema)?;
+        if schema
+            .get("$schema")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s != "https://json-schema.org/draft/2020-12/schema")
+        {
+            return Err(Error::Schema);
+        }
+        let value = Value::Object(schema.clone());
+        reference_safety(&value)?;
+        let validator = jsonschema::options()
+            .with_draft(jsonschema::Draft::Draft202012)
+            .with_retriever(Offline)
+            .with_pattern_options(jsonschema::PatternOptions::fancy_regex().backtrack_limit(10000))
+            .build(&value)
+            .map_err(|_| Error::Schema)?;
+        Ok(Self(validator))
+    }
+    pub fn validate(
+        &self,
+        value: &Value,
+        context: &namzu_core::TurnContext,
+    ) -> Result<(), namzu_core::AgentError> {
+        context.remaining()?;
+        // Bound host constructed instances before traversing/validating them.
+        let object = value.as_object().ok_or(namzu_core::AgentError::Protocol(
+            "MCP object instance required",
+        ))?;
+        crate::wire::validate_metadata(object, &crate::Limits::default())
+            .map_err(|_| namzu_core::AgentError::Protocol("MCP instance exceeds limits"))?;
+        let valid = self.0.is_valid(value);
+        context.remaining()?;
+        if valid {
+            Ok(())
+        } else {
+            Err(namzu_core::AgentError::Protocol(
+                "MCP instance violates JSON Schema",
+            ))
+        }
+    }
+}
+
+// A reference cycle that never consumes an instance property/item can recurse
+// forever. Reject it before entering the validator; productive recursive object
+// schemas remain usable under the wire instance depth limit.
+fn reference_safety(root: &Value) -> Result<(), Error> {
+    fn same<'a>(
+        v: &'a Value,
+        root: &'a Value,
+        active: &mut std::collections::BTreeSet<usize>,
+        budget: &mut usize,
+    ) -> Result<(), Error> {
+        if *budget == 0 {
+            return Err(Error::Schema);
+        }
+        *budget -= 1;
+        let Some(o) = v.as_object() else {
+            return Ok(());
+        };
+        let id = v as *const Value as usize;
+        if !active.insert(id) {
+            return Err(Error::Schema);
+        }
+        for key in ["$ref", "$dynamicRef", "$recursiveRef"] {
+            if let Some(r) = o.get(key).and_then(Value::as_str) {
+                same(
+                    root.pointer(r.strip_prefix('#').ok_or(Error::Schema)?)
+                        .ok_or(Error::Schema)?,
+                    root,
+                    active,
+                    budget,
+                )?;
+            }
+        }
+        for key in ["allOf", "anyOf", "oneOf"] {
+            if let Some(a) = o.get(key).and_then(Value::as_array) {
+                for child in a {
+                    same(child, root, active, budget)?;
+                }
+            }
+        }
+        for key in ["not", "if", "then", "else"] {
+            if let Some(child) = o.get(key) {
+                same(child, root, active, budget)?;
+            }
+        }
+        for key in ["dependentSchemas"] {
+            if let Some(m) = o.get(key).and_then(Value::as_object) {
+                for child in m.values() {
+                    same(child, root, active, budget)?;
+                }
+            }
+        }
+        active.remove(&id);
+        Ok(())
+    }
+    fn walk(v: &Value, root: &Value, budget: &mut usize) -> Result<(), Error> {
+        same(v, root, &mut Default::default(), budget)?;
+        let Some(o) = v.as_object() else {
+            return Ok(());
+        };
+        for key in [
+            "properties",
+            "patternProperties",
+            "$defs",
+            "definitions",
+            "dependentSchemas",
+        ] {
+            if let Some(m) = o.get(key).and_then(Value::as_object) {
+                for child in m.values() {
+                    walk(child, root, budget)?;
+                }
+            }
+        }
+        for key in [
+            "items",
+            "additionalProperties",
+            "unevaluatedProperties",
+            "unevaluatedItems",
+            "contains",
+            "propertyNames",
+            "not",
+            "if",
+            "then",
+            "else",
+        ] {
+            if let Some(child) = o.get(key) {
+                if let Some(a) = child.as_array() {
+                    for child in a {
+                        walk(child, root, budget)?;
+                    }
+                } else {
+                    walk(child, root, budget)?;
+                }
+            }
+        }
+        for key in ["allOf", "anyOf", "oneOf", "prefixItems"] {
+            if let Some(a) = o.get(key).and_then(Value::as_array) {
+                for child in a {
+                    walk(child, root, budget)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(root, root, &mut 65536)
+}

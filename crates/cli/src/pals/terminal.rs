@@ -227,6 +227,7 @@ mod tests {
                     effort: None,
                     identity: "fixture".into(),
                     guest: false,
+                    mcp: Value::Null,
                 })
                 .unwrap(),
                 tools: None,

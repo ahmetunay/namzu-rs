@@ -1,9 +1,13 @@
 //! Owned, offline Docker computers. No host tool fallback, mounts or model credentials.
 pub mod engine;
+#[cfg(unix)]
+mod mcp;
 pub mod protocol;
 mod tools;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 pub use engine::{Answer, ContainerInfo, Docker, Engine, Mount, Operation, VolumeInfo};
+#[cfg(unix)]
+pub use mcp::SharedGuestTools;
 use namzu_core::{AgentError, Cancellation, TurnContext};
 use namzu_session::{PrivateStore, StoreLock, now_ms};
 use namzu_tools::process::ProcessOutput;
@@ -207,6 +211,7 @@ impl<E: Engine> ComputerManager<E> {
             _lock: lock,
             retained: false,
             preserve_workspace: false,
+            mcp_active: false,
         };
         let result = (|| {
             self.done(
@@ -282,6 +287,7 @@ impl<E: Engine> ComputerManager<E> {
             _lock: lock,
             retained: false,
             preserve_workspace: false,
+            mcp_active: false,
         })
     }
     pub fn recover_cleanup(&self, ctx: &TurnContext) -> Result<(), AgentError> {
@@ -399,6 +405,7 @@ pub struct Computer<'a, E: Engine = Docker> {
     _lock: StoreLock,
     retained: bool,
     preserve_workspace: bool,
+    mcp_active: bool,
 }
 impl<E: Engine> Computer<'_, E> {
     /// A persistent host session keeps files on early return/unwind, while Drop
@@ -410,6 +417,7 @@ impl<E: Engine> Computer<'_, E> {
         &self.record
     }
     pub fn start(&mut self, ctx: &TurnContext) -> Result<(), AgentError> {
+        self.mcp_active = false;
         ctx.remaining()?;
         if self.record.phase != Phase::Stopped {
             return Err(AgentError::State("start requires stopped computer"));
@@ -448,6 +456,7 @@ impl<E: Engine> Computer<'_, E> {
         result
     }
     pub fn stop(&mut self, ctx: &TurnContext) -> Result<(), AgentError> {
+        self.mcp_active = false;
         self.manager.stop_record(&mut self.record, ctx)
     }
     pub fn restart(&mut self, ctx: &TurnContext) -> Result<(), AgentError> {
@@ -482,6 +491,12 @@ impl<E: Engine> Computer<'_, E> {
         Ok(self.record.clone())
     }
     pub fn acknowledge_uncertain(&mut self) -> Result<(), AgentError> {
+        if self.mcp_active && self.record.phase == Phase::Running {
+            return Err(AgentError::State(
+                "stop the active MCP scope before acknowledging",
+            ));
+        }
+        self.mcp_active = false;
         if !matches!(self.record.phase, Phase::Stopped | Phase::Running) {
             return Err(AgentError::State(
                 "computer cannot acknowledge this lifecycle state",
@@ -491,6 +506,7 @@ impl<E: Engine> Computer<'_, E> {
         self.manager.save(&self.record)
     }
     fn abort_remote(&mut self) -> Result<(), AgentError> {
+        self.mcp_active = false;
         if self
             .manager
             .stop_record(&mut self.record, &cleanup_context())
@@ -526,7 +542,13 @@ impl<E: Engine> Computer<'_, E> {
             request,
             GuestRequest::Probe | GuestRequest::Read { .. } | GuestRequest::List { .. }
         );
-        if self.record.pending.is_some() && !readonly {
+        if self
+            .record
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.kind != "mcp-active" || !self.mcp_active)
+            && !readonly
+        {
             return Err(AgentError::State(
                 "uncertain effect: inspect and acknowledge before new writes/shell",
             ));

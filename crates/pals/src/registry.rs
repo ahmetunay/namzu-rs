@@ -543,7 +543,7 @@ fn validate_definition(pal: &PalDefinition) -> Result<(), AgentError> {
         || pal.name.chars().any(char::is_control)
         || pal.purpose.len() > 4096
         || pal.route.is_empty()
-        || pal.route.len() > 1024
+        || pal.route.len() > 8192
         || pal.tools.len() > 128
         || pal
             .tools
@@ -663,6 +663,9 @@ struct RunObserver<'a, 'r, O> {
     host: &'a mut O,
 }
 impl<O: Observer> Observer for RunObserver<'_, '_, O> {
+    fn supports_approval(&self) -> bool {
+        self.host.supports_approval()
+    }
     fn approve(&mut self, call: &ToolCall, context: &TurnContext) -> Result<bool, AgentError> {
         self.run.assert_active()?;
         let approved = self.host.approve(call, context)?;

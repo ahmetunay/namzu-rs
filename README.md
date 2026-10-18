@@ -302,7 +302,7 @@ namzu-rs mcp discover SERVER templates --approve
 
 [SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
 kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
-Sıradaki parça **3.6 — SDK/CLI/TUI/Pals entegrasyonu**.
+3.6 entegrasyonu tamamlandı; sıradaki parça **3.7 — OAuth ve kimlik bilgileri**.
 
 ## Yerel checkpoint ve kurtarma
 
@@ -333,3 +333,10 @@ Bu projede dış yedek artık yukarıdaki GitHub deposudur. Yerel checkpoint scr
 GitHub'a yüklemez; manifestindeki `remote_backup_verified: false` yalnızca o
 script'in uzak doğrulama yapmadığını ifade eder. Her aşamadan sonra ayrıca
 BACKUP.md'deki push ve uzak commit doğrulaması yapılır.
+
+## MCP ile ajan çalıştırma
+
+MCP 3.1–3.6 hazır: açık `--mcp-server`, normal exec/TUI ve Pal entegrasyonu,
+input/output JSON Schema doğrulaması ve owned guest stdio. Kullanım, izin
+davranışı ve mevcut sınırlar [MCP ajan belgesinde](docs/MCP-AGENT.md).
+OAuth 3.7 ve reconnect/toparlanma 3.8 henüz uygulanmadı.

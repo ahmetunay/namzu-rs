@@ -87,6 +87,23 @@ impl AgentHost {
     fn compatible(session: &Session, options: &RunOptions, c: &crate::config::Config) -> bool {
         let cwd = options.cwd.canonicalize().ok();
         let route: serde_json::Value = serde_json::from_str(&session.route).unwrap_or_default();
+        if !options.mcp.servers.is_empty() || route.get("mcp").is_some() {
+            let current = (|| {
+                let ctx = namzu_core::TurnContext::new(
+                    std::time::Duration::from_secs(5),
+                    Cancellation::default(),
+                )?;
+                let state = options
+                    .state_dir
+                    .clone()
+                    .map_or_else(default_state_dir, Ok)?;
+                crate::mcp_runtime::identity(&state, &options.mcp, &ctx)
+            })();
+            if current.ok().as_ref() != route.get("mcp") {
+                return false;
+            }
+        }
+        let route = route.get("provider_route").unwrap_or(&route);
         session.status == SessionStatus::Complete
             && session.pending_call.is_none()
             && cwd.as_ref() == Some(&session.cwd)
@@ -95,12 +112,13 @@ impl AgentHost {
                     && route["model"].as_str() == c.model.as_deref()
                     && route["endpoint"] == "https://chatgpt.com/backend-api/codex/"
             } else {
-                route == serde_json::json!([c.provider, c.base_url, c.model])
+                route == &serde_json::json!([c.provider, c.base_url, c.model])
             }
     }
 }
 fn model_name(session: &Session) -> String {
     let route: serde_json::Value = serde_json::from_str(&session.route).unwrap_or_default();
+    let route = route.get("provider_route").unwrap_or(&route);
     route
         .get("model")
         .or_else(|| route.get(2))
