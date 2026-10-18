@@ -1079,10 +1079,13 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "namzu-core",
+ "native-tls",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

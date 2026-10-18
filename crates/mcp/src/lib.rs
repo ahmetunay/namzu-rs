@@ -1,5 +1,6 @@
-//! Bounded MCP client protocol and explicit Unix stdio transport. The protocol
+//! Bounded MCP protocol, Unix stdio and Streamable HTTP transports. The protocol
 //! itself performs no I/O. No uncertain request is automatically retried.
+pub mod http;
 mod session;
 #[cfg(unix)]
 pub mod stdio;

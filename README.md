@@ -76,8 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.2 tamamlandı.
-  Protokol ve Unix stdio var; HTTP taşıması 3.3'te eklenecek.
+- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.3 tamamlandı.
+  Protokol, Unix stdio ve Streamable HTTP/SSE var; yönetim/izinler 3.4'te.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -253,7 +253,21 @@ cargo run --release -p namzu-mcp --example stdio -- /absolute/server literal-arg
 25 yeni test, toplam 238 Rust testi; format/Clippy/release ve gerçek yerel fixture
 subprocess örneği geçti. Model kotası kullanılmadı. Test server'ı Python 3 stdlib'dir;
 üretim stdio istemcisi Rust'tır. [Kullanım, kabul ve kapsam](docs/MCP-STDIO.md).
-Sıradaki parça **3.3 — Streamable HTTP/SSE**. CLI yönetimi/ajan araçları 3.4–3.6'dadır.
+
+## 3.3 — MCP Streamable HTTP/SSE
+
+Native Rust HTTP istemcisi JSON/SSE, session ve sürüm başlıkları, korunmuş GET
+akışı, açık DELETE, parent iptal/deadline ve belirsiz etkide replay reddi sunar.
+TLS doğrulaması ve ortam proxy/CA ayarları korunur. 30 yeni test, toplam 268
+Rust testi; yerel gerçek TLS/CONNECT proxy kabulü ve release HTTP örneği geçti.
+Model çağrısı 0. [Kullanım ve sınırlar](docs/MCP-HTTP.md).
+
+```sh
+cargo run --release -p namzu-mcp --example http -- https://server.example/mcp
+```
+
+Sıradaki parça **3.4 — Config, yönetim ve güven**. OAuth 3.7, yeniden bağlanma
+ve recovery 3.8'dedir. Eski 2024 HTTP+SSE endpoint keşfi desteklenmez.
 
 ## Yerel checkpoint ve kurtarma
 
