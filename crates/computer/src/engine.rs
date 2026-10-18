@@ -190,7 +190,10 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
         "--mount".into(),
         format!("type=volume,src={},dst=/workspace", record.volume),
         "--tmpfs".into(),
-        "/tmp:rw,nosuid,nodev,size=16777216,mode=1777".into(),
+        format!(
+            "/tmp:rw,nosuid,nodev,size={},mode=1777",
+            if spec.browser { 268435456 } else { 16777216 }
+        ),
         "--workdir=/workspace".into(),
         format!("--entrypoint={GUEST}"),
     ]);
@@ -199,6 +202,9 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
             "--env".into(),
             format!("NAMZU_DESKTOP_SCREEN={}x{}x24", screen.width, screen.height),
         ]);
+    }
+    if spec.browser {
+        args.extend(["--env".into(), "NAMZU_BROWSER=1".into()]);
     }
     for (key, value) in labels(record) {
         args.extend(["--label".into(), format!("{key}={value}")]);

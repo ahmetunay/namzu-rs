@@ -19,6 +19,36 @@ fn files(request: GuestRequest) -> Result<GuestValue, String> {
     let root = Dir::open_ambient_dir("/workspace", ambient_authority())
         .map_err(|_| "guest workspace unavailable")?;
     match request {
+        GuestRequest::Browser {
+            request,
+            timeout_ms,
+        } => {
+            if !(1..=30000).contains(&timeout_ms) {
+                return Err("invalid browser deadline".into());
+            }
+            let context =
+                TurnContext::new(Duration::from_millis(timeout_ms), Cancellation::default())
+                    .map_err(|_| "invalid browser deadline")?;
+            let out = namzu_tools::process::run_process_input(
+                ProcessSpec {
+                    program: "/usr/local/bin/namzu-browser".into(),
+                    args: vec![],
+                    cwd: "/workspace".into(),
+                    env: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                    timeout: Duration::from_millis(timeout_ms),
+                    output_limit: WIRE_LIMIT,
+                },
+                &context,
+                &serde_json::to_vec(&request).map_err(|_| "invalid browser input")?,
+            )
+            .map_err(|_| "browser deadline; computer must stop")?;
+            if out.status != "exited" || out.exit_code != Some(0) {
+                return Err("browser worker failed".into());
+            }
+            let value: Result<namzu_computer::browser::Reply, String> =
+                serde_json::from_str(&out.stdout).map_err(|_| "invalid browser reply")?;
+            value.map(|value| GuestValue::Browser { value })
+        }
         GuestRequest::Desktop {
             request,
             timeout_ms,
@@ -271,9 +301,62 @@ fn main() {
                 .stderr(std::process::Stdio::null())
                 .spawn()
                 .expect("desktop server unavailable");
+            let mut browser = if std::env::var("NAMZU_BROWSER").as_deref() == Ok("1") {
+                // X socket readiness only; the actual server belongs to this PID1.
+                let until = std::time::Instant::now() + Duration::from_secs(5);
+                while !std::path::Path::new("/tmp/.X11-unix/X99").exists() {
+                    if std::time::Instant::now() > until {
+                        std::process::exit(1);
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Some(
+                    std::process::Command::new("/usr/bin/chromium")
+                        .args([
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--no-first-run",
+                            "--no-default-browser-check",
+                            "--disable-background-networking",
+                            "--disable-component-update",
+                            "--disable-sync",
+                            "--disable-extensions",
+                            "--disable-default-apps",
+                            "--password-store=basic",
+                            "--no-proxy-server",
+                            "--disable-gpu",
+                            "--remote-debugging-port=9222",
+                            "--remote-debugging-address=127.0.0.1",
+                            "--user-data-dir=/tmp/namzu-chromium",
+                            &format!(
+                                "--window-size={}",
+                                screen.trim_end_matches("x24").replace('x', ",")
+                            ),
+                            "about:blank",
+                        ])
+                        .env_clear()
+                        .env("PATH", "/usr/bin:/bin")
+                        .env("HOME", "/tmp")
+                        .env("DISPLAY", ":99")
+                        .env("LANG", "C.UTF-8")
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                        .expect("browser unavailable"),
+                )
+            } else {
+                None
+            };
             loop {
                 if server.try_wait().ok().flatten().is_some() {
                     std::process::exit(1)
+                }
+                if browser
+                    .as_mut()
+                    .is_some_and(|b| b.try_wait().ok().flatten().is_some())
+                {
+                    std::process::exit(1);
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }

@@ -76,8 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.5 tamamlandı.
-  Protokol, taşıma, profil/güven ve bounded katalog keşfi var.
+- TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.2
+  tamamlandı. Tarayıcı eylemleri 4.3, model/TUI görsel entegrasyonu 4.4 sırada.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -302,8 +302,8 @@ namzu-rs mcp discover SERVER templates --approve
 
 [SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
 kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
-3.6 entegrasyonu ve 3.8 toparlanma tamamlandı. Bilgisayar ekran/girdi **4.1**
-hazır; sıradaki iş **4.2 — tarayıcı ve DOM**.
+3.6 entegrasyonu ve 3.8 toparlanma tamamlandı. Bilgisayar ekran/girdi **4.1** ve
+tarayıcı/DOM **4.2** hazır; sıradaki iş **4.3 — sayfa eylemleri ve dosya aktarımı**.
 
 ## Yerel checkpoint ve kurtarma
 
@@ -365,6 +365,16 @@ otomatik tekrarlanmaz. [Kabul ve sınırlar](docs/MCP-RECOVERY.md).
 PNG screenshot, koordinat, fare ve klavye işlemleri kullanılabilir.
 `pal --allow-input computer PAL_ID desktop request.json` girdi iznini yalnızca
 o komuta verir; screenshot `--output NEW_FILE.png` ile özel dosyaya yazılır.
-Metin girişi şu an US-layout ASCII ile sınırlıdır. Tarayıcı 4.2–4.3,
+Metin girişi şu an US-layout ASCII ile sınırlıdır. Tarayıcı eylemleri 4.3,
 model/TUI görsel araç entegrasyonu 4.4 kapsamındadır.
 [İmaj oluşturma, SDK/CLI kullanımı ve kabul](docs/DESKTOP.md).
+
+## Pal tarayıcı kontrolü
+
+4.2 tamam: açık `create --desktop --browser` seçimiyle owned Chromium başlar.
+`pal --allow-navigate computer PAL_ID browser request.json` gezinme yapar;
+`info` ve `snapshot` istekleri sayfa metadata, sınırlı DOM ve erişilebilirlik
+ağacını verir. Aynı Xvfb ekranının PNG'si desktop API'sinden alınır.
+Tarayıcı mevcut ağsız container içinde çalışır; guest yerel HTTP sayfalarıyla
+doğrulandı, internet erişimi açılmaz. Gezinme hatası/iptali stop/pending ve açık
+inspect/ack korumasını kullanır. [SDK/CLI ve sınırlar](docs/BROWSER.md).

@@ -137,6 +137,14 @@ class Terminal:
             self.pump()
         assert self.status is not None, 'TUI failed to join its worker'
         assert os.waitstatus_to_exitcode(self.status) == 0, 'TUI exit failed'
+        # waitpid may observe exit before the final PTY output has been read.
+        for _ in range(64):
+            if not select.select([self.master], [], [], 0)[0]: break
+            try: data = os.read(self.master, 65536)
+            except OSError: break
+            if not data: break
+            self.buffer.extend(data)
+            del self.buffer[:-1024 * 1024]
         assert termios.tcgetattr(self.slave) == self.original, 'terminal mode was not restored'
         assert b'\x1b[?1049l' in self.buffer, 'alternate screen was not left'
         assert b'\x1b[?2004l' in self.buffer, 'bracketed paste was not disabled'

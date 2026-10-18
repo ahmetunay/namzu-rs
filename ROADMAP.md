@@ -62,7 +62,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
-| 4 | Tarayıcı / bilgisayar kontrolü | 4.1 tamam; 4.2–4.4 sırada | İzole bilgisayarda tarayıcı ve görsel eylemler |
+| 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.2 tamam; 4.3–4.4 sırada | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
@@ -158,7 +158,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   açık CLI girdi izni, PNG doğrulaması ve iptal/pending koruması. Gerçek Docker
   GUI/CLI kabulü ve Pal regresyonu geçti. US-layout ASCII; Unicode henüz yok.
   [Kullanım ve sınırlar](docs/DESKTOP.md).
-- **4.2** — Tarayıcı başlatma, sayfa gezinme, DOM/erişilebilirlik ağacı ve ekran içeriği.
+- **4.2 — tamam** — Owned Chromium yaşam döngüsü, native Rust CDP worker,
+  açık gezinme izni, redirect/fragment, sınırlı DOM/AX ve aynı Xvfb ekranı.
+  Gerçek Docker yerel HTTP oracle'ıyla SDK/CLI kabulü; ağsız tek sekme.
+  [Kullanım ve sınırlar](docs/BROWSER.md).
 - **4.3** — Sayfa eylemleri, indirme/yükleme ve dosya aktarımı; izinler ve iptal.
 - **4.4** — Pal/SDK/TUI entegrasyonu; yerel test sitesiyle görev ve temizlik doğrulaması.
 
@@ -213,7 +216,16 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 4.2 — tarayıcı başlatma, gezinme ve DOM/erişilebilirlik ağacı.**
+**Sıradaki iş: 4.3 — sayfa eylemleri, indirme/yükleme ve dosya aktarımı.**
+4.2 tamamlandı: opt-in Chromium image/spec, PID1 yaşam döngüsü ve sabit
+info/navigate/snapshot Rust worker. URL/izin preflight, bounded HTTP/WebSocket
+CDP, loader-bound load bekleme, redirect/fragment URL doğruluğu, DOM/AX sınırları
+ve stop/pending/replay reddi uygulandı. 13 yeni Rust testi; toplam 419.
+Format/Clippy/release ve gerçek Chromium SDK/CLI gezinme, DOM/AX, PNG pikseli,
+büyük DOM kırpma, hata sonrası inspect/ack ve owned cleanup geçti. Canlı model
+çağrısı 0. Browser ağsız; internet/çoklu sekme, sayfa eylemleri ve model/TUI
+görsel entegrasyonu tamamlanmış sayılmaz. [Kabul ve sınırlar](docs/BROWSER.md).
+
 4.1 tamamlandı: açık opt-in masaüstü image/spec, X11/XTEST Rust worker,
 ekran PNG'si, koordinat, click/drag/scroll ve key/type. 10 yeni Rust testi;
 toplam 406. Format/Clippy/release ve gerçek native GUI piksel/girdi oraklları,

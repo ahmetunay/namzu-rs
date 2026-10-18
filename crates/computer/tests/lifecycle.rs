@@ -23,6 +23,8 @@ struct State {
     fail_create: bool,
     screen: Option<namzu_computer::desktop::ScreenConfig>,
     fail_desktop: bool,
+    fail_browser: bool,
+    wrong_browser: bool,
     fail_start: bool,
     cancel_exec: bool,
     bad_reply: bool,
@@ -132,6 +134,36 @@ impl Engine for Mock {
                     }));
                 }
                 let value = match request {
+                    GuestRequest::Browser { request, .. } => {
+                        use namzu_computer::browser::{Page, Reply, Request};
+                        if s.fail_browser {
+                            return Ok(Answer::Guest(GuestReply {
+                                version: 1,
+                                result: Err("fixture browser failure".into()),
+                            }));
+                        }
+                        let page = Page {
+                            url: "about:blank".into(),
+                            title: "fixture".into(),
+                            frame_id: "frame".into(),
+                            loader_id: "loader".into(),
+                        };
+                        let value = if s.wrong_browser {
+                            Reply::Info { page }
+                        } else {
+                            match request {
+                                Request::Info => Reply::Info { page },
+                                Request::Navigate { .. } => Reply::Navigated { page },
+                                Request::Snapshot => Reply::Snapshot {
+                                    page,
+                                    dom: vec![],
+                                    accessibility: vec![],
+                                    truncated: false,
+                                },
+                            }
+                        };
+                        GuestValue::Browser { value }
+                    }
                     GuestRequest::Desktop { request, .. } => {
                         if s.fail_desktop {
                             return Ok(Answer::Guest(GuestReply {
@@ -745,4 +777,197 @@ fn legacy_specs_are_headless_and_desktop_arguments_are_explicit() {
     let c = manager.acquire(s, &ctx()).unwrap();
     let args = namzu_computer::engine::create_arguments(c.snapshot());
     assert!(args.iter().any(|s| s == "NAMZU_DESKTOP_SCREEN=800x600x24"));
+}
+
+fn browser_spec() -> ComputerSpec {
+    let mut s = spec();
+    s.desktop = Some(Default::default());
+    s.browser = true;
+    s.memory_bytes = 768 * 1024 * 1024;
+    s.pids = 128;
+    s
+}
+#[test]
+fn browser_is_opt_in_and_invalid_navigation_has_no_guest_effect() {
+    use namzu_computer::browser::Request;
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(spec(), &ctx()).unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    assert!(computer.browser(Request::Info, &ctx()).is_err());
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    computer.close(&ctx()).unwrap();
+    drop(computer);
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    for url in [
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "data:text/html,hello",
+        "chrome://settings",
+        "https://user:secret@example.com/",
+        "http://host/\nsecret",
+    ] {
+        assert!(
+            computer
+                .browser(Request::Navigate { url: url.into() }, &ctx())
+                .is_err()
+        );
+    }
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(computer.snapshot().pending.is_none());
+}
+#[test]
+fn browser_navigation_and_inspection_roundtrip_without_pending() {
+    use namzu_computer::browser::{Reply, Request};
+    let (_root, _mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    assert!(matches!(
+        computer.browser(Request::Info, &ctx()).unwrap(),
+        Reply::Info { .. }
+    ));
+    assert!(matches!(
+        computer
+            .browser(
+                Request::Navigate {
+                    url: "https://example.com/path".into()
+                },
+                &ctx()
+            )
+            .unwrap(),
+        Reply::Navigated { .. }
+    ));
+    assert!(matches!(
+        computer.browser(Request::Snapshot, &ctx()).unwrap(),
+        Reply::Snapshot { .. }
+    ));
+    assert!(computer.snapshot().pending.is_none());
+}
+#[test]
+fn failed_navigation_stops_and_inspection_preserves_fence() {
+    use namzu_computer::browser::Request;
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    mock.0.lock().unwrap().fail_browser = true;
+    assert!(
+        computer
+            .browser(
+                Request::Navigate {
+                    url: "https://example.com/".into()
+                },
+                &ctx()
+            )
+            .is_err()
+    );
+    assert_eq!(computer.snapshot().phase, Phase::Stopped);
+    assert_eq!(
+        computer.snapshot().pending.as_ref().unwrap().kind,
+        "browser_navigate"
+    );
+    mock.0.lock().unwrap().fail_browser = false;
+    computer.start(&ctx()).unwrap();
+    computer.browser(Request::Snapshot, &ctx()).unwrap();
+    assert_eq!(
+        computer.snapshot().pending.as_ref().unwrap().kind,
+        "browser_navigate"
+    );
+    let before = mock.0.lock().unwrap().execs;
+    assert!(
+        computer
+            .browser(
+                Request::Navigate {
+                    url: "about:blank".into()
+                },
+                &ctx()
+            )
+            .is_err()
+    );
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    computer.acknowledge_uncertain().unwrap();
+    computer
+        .browser(
+            Request::Navigate {
+                url: "about:blank".into(),
+            },
+            &ctx(),
+        )
+        .unwrap();
+}
+#[test]
+fn cancelled_browser_navigation_and_wrong_kind_are_never_replayed() {
+    use namzu_computer::browser::Request;
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    mock.0.lock().unwrap().cancel_exec = true;
+    assert!(
+        computer
+            .browser(
+                Request::Navigate {
+                    url: "about:blank".into()
+                },
+                &ctx()
+            )
+            .is_err()
+    );
+    assert_eq!(computer.snapshot().phase, Phase::Stopped);
+    assert!(computer.snapshot().pending.is_some());
+    computer.acknowledge_uncertain().unwrap();
+    computer.start(&ctx()).unwrap();
+    mock.0.lock().unwrap().wrong_browser = true;
+    assert!(computer.browser(Request::Snapshot, &ctx()).is_err());
+    assert_eq!(computer.snapshot().phase, Phase::Stopped);
+    assert_eq!(
+        computer.snapshot().pending.as_ref().unwrap().kind,
+        "browser_snapshot"
+    );
+}
+#[test]
+fn browser_spec_requires_resources_and_does_not_change_legacy_images() {
+    let mut s = browser_spec();
+    s.desktop = None;
+    assert!(s.validate().is_err());
+    s = browser_spec();
+    s.memory_bytes = 256 * 1024 * 1024;
+    assert!(s.validate().is_err());
+    s = browser_spec();
+    s.pids = 64;
+    assert!(s.validate().is_err());
+    let legacy: ComputerSpec = serde_json::from_value(
+        json!({"image":spec().image,"memory_bytes":268435456,"cpu_millis":1000,"pids":64}),
+    )
+    .unwrap();
+    assert!(!legacy.browser);
+    let (_root, _mock, manager) = setup();
+    let computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let args = namzu_computer::engine::create_arguments(computer.snapshot());
+    assert!(args.iter().any(|v| v == "NAMZU_BROWSER=1"));
+    assert!(args.iter().any(|v| v.contains("size=268435456")));
+    assert!(args.iter().any(|v| v == "--network=none"));
+}
+#[test]
+fn browser_reply_rejects_oversize_data_and_debug_redacts_urls() {
+    use namzu_computer::browser::{Page, Reply, Request};
+    let r = Request::Navigate {
+        url: "https://example.com/?secret=private".into(),
+    };
+    assert!(!format!("{r:?}").contains("private"));
+    let mut page = Page {
+        url: "about:blank".into(),
+        title: "x".repeat(2049),
+        frame_id: "f".into(),
+        loader_id: "l".into(),
+    };
+    assert!(Reply::Info { page }.validate().is_err());
+    page = Page {
+        url: "about:blank".into(),
+        title: "fixture".into(),
+        frame_id: String::new(),
+        loader_id: "l".into(),
+    };
+    assert!(Reply::Navigated { page }.validate().is_err());
+    assert!(
+        serde_json::from_value::<Request>(
+            json!({"action":"navigate","url":"about:blank","evaluate":"secret"})
+        )
+        .is_err()
+    );
 }

@@ -1,4 +1,5 @@
 //! Owned, offline Docker computers. No host tool fallback, mounts or model credentials.
+pub mod browser;
 pub mod desktop;
 pub mod engine;
 #[cfg(unix)]
@@ -26,6 +27,8 @@ pub struct ComputerSpec {
     pub pids: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desktop: Option<desktop::ScreenConfig>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub browser: bool,
 }
 impl ComputerSpec {
     pub fn new(image: impl Into<String>) -> Self {
@@ -35,9 +38,17 @@ impl ComputerSpec {
             cpu_millis: 1000,
             pids: 64,
             desktop: None,
+            browser: false,
         }
     }
     pub fn validate(&self) -> Result<(), AgentError> {
+        if self.browser
+            && (self.desktop.is_none() || self.memory_bytes < 512 * 1024 * 1024 || self.pids < 128)
+        {
+            return Err(AgentError::Configuration(
+                "browser requires desktop, >=512 MiB RAM and >=128 PIDs",
+            ));
+        }
         if let Some(screen) = &self.desktop {
             screen.validate()?;
         }
@@ -554,6 +565,10 @@ impl<E: Engine> Computer<'_, E> {
                     request: desktop::Request::Info | desktop::Request::Screenshot,
                     ..
                 }
+                | GuestRequest::Browser {
+                    request: browser::Request::Info | browser::Request::Snapshot,
+                    ..
+                }
         );
         if self
             .record
@@ -568,6 +583,15 @@ impl<E: Engine> Computer<'_, E> {
         }
         let previous = self.record.pending.clone();
         let kind = match &request {
+            GuestRequest::Browser {
+                request: browser::Request::Info,
+                ..
+            } => "browser_info",
+            GuestRequest::Browser {
+                request: browser::Request::Snapshot,
+                ..
+            } => "browser_snapshot",
+            GuestRequest::Browser { .. } => "browser_navigate",
             GuestRequest::Probe => "probe",
             GuestRequest::Read { .. } => "read",
             GuestRequest::Write { .. } => "write",
@@ -605,6 +629,25 @@ impl<E: Engine> Computer<'_, E> {
                         Answer::Guest(reply) if reply.version == 1 => {
                             if let Ok(value) = &reply.result {
                                 let valid = match (kind, value) {
+                                    (
+                                        "browser_info" | "browser_snapshot" | "browser_navigate",
+                                        GuestValue::Browser { value },
+                                    ) => {
+                                        self.record.spec.browser
+                                            && matches!(
+                                                (kind, value),
+                                                ("browser_info", browser::Reply::Info { .. })
+                                                    | (
+                                                        "browser_snapshot",
+                                                        browser::Reply::Snapshot { .. }
+                                                    )
+                                                    | (
+                                                        "browser_navigate",
+                                                        browser::Reply::Navigated { .. }
+                                                    )
+                                            )
+                                            && value.validate().is_ok()
+                                    }
                                     ("probe", GuestValue::Ready)
                                     | ("write", GuestValue::Written) => true,
                                     ("read", GuestValue::Bytes { base64 }) => {
@@ -661,7 +704,9 @@ impl<E: Engine> Computer<'_, E> {
                 });
         match reply {
             Ok(result) => {
-                if (kind == "shell" || kind == "write" || kind.starts_with("desktop") && !readonly)
+                if (kind == "shell"
+                    || kind == "write"
+                    || (kind.starts_with("desktop") || kind.starts_with("browser")) && !readonly)
                     && result.is_err()
                 {
                     self.abort_remote()?;

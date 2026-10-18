@@ -19,6 +19,8 @@ libc = "0.2"
 tempfile.workspace = true
 png = "0.17"
 x11rb = { version = "0.13", features = ["xtest"] }
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+url = "2"
 
 [[bin]]
 name = "namzu-guest"
@@ -27,3 +29,7 @@ path = "src/bin/guest.rs"
 [[bin]]
 name = "namzu-desktop"
 path = "src/bin/desktop.rs"
+
+[[bin]]
+name = "namzu-browser"
+path = "src/bin/browser.rs"

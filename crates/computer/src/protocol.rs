@@ -8,6 +8,10 @@ pub const GUEST: &str = "/usr/local/bin/namzu-guest";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GuestRequest {
+    Browser {
+        request: crate::browser::Request,
+        timeout_ms: u64,
+    },
     Desktop {
         request: crate::desktop::Request,
         timeout_ms: u64,
@@ -32,6 +36,7 @@ pub enum GuestRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GuestValue {
+    Browser { value: crate::browser::Reply },
     Desktop { value: crate::desktop::Reply },
     Ready,
     Written,

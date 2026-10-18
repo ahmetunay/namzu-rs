@@ -41,6 +41,9 @@ pub struct PalOptions {
     /// Explicit host control permission for owned-guest keyboard and mouse input.
     #[arg(long)]
     pub allow_input: bool,
+    /// Permit explicit browser navigation for this invocation only.
+    #[arg(long)]
+    pub allow_navigate: bool,
     /// Explicit pinned local image: create a temporary computer for each turn.
     #[arg(long)]
     pub image: Option<String>,
@@ -156,6 +159,8 @@ enum ComputerAction {
         #[arg(long)]
         desktop: bool,
         #[arg(long, requires = "desktop")]
+        browser: bool,
+        #[arg(long, requires = "desktop")]
         width: Option<u16>,
         #[arg(long, requires = "desktop")]
         height: Option<u16>,
@@ -165,6 +170,10 @@ enum ComputerAction {
         request: PathBuf,
         #[arg(long)]
         output: Option<PathBuf>,
+    },
+    /// Bounded Chromium info/navigation/DOM+AX request from JSON.
+    Browser {
+        request: PathBuf,
     },
     Show,
     Start,
@@ -940,6 +949,21 @@ fn computer(
     ctx: &TurnContext,
 ) -> Result<Value, AgentError> {
     let manager = o.manager(registry, id)?;
+    let mut prepared_browser = if let ComputerAction::Browser { request } = &action {
+        let request: namzu_computer::browser::Request =
+            serde_json::from_slice(&transfer::read(request)?)
+                .map_err(|_| AgentError::Configuration("invalid browser JSON request"))?;
+        request.validate()?;
+        if !request.readonly() && !o.allow_navigate {
+            return Err(AgentError::Configuration("--allow-navigate required"));
+        }
+        if !manager.snapshot()?.is_some_and(|r| r.spec.browser) {
+            return Err(AgentError::Configuration("browser not configured"));
+        }
+        Some(request)
+    } else {
+        None
+    };
     let mut prepared_desktop = if let ComputerAction::Desktop { request, output } = &action {
         use namzu_computer::desktop::Request;
         let request: Request = serde_json::from_slice(&transfer::read(request)?)
@@ -976,6 +1000,7 @@ fn computer(
         }
         ComputerAction::Create {
             desktop,
+            browser,
             width,
             height,
         } => {
@@ -989,6 +1014,11 @@ fn computer(
                 "--image sha256:ID required for computer create",
             ))?;
             let mut spec = ComputerSpec::new(image);
+            if browser {
+                spec.browser = true;
+                spec.memory_bytes = 768 * 1024 * 1024;
+                spec.pids = 128;
+            }
             if desktop {
                 spec.desktop = Some(namzu_computer::desktop::ScreenConfig {
                     width: width.unwrap_or(1024),
@@ -1001,12 +1031,22 @@ fn computer(
     }
     let keep_running = matches!(
         action,
-        ComputerAction::Start | ComputerAction::Restart | ComputerAction::Desktop { .. }
+        ComputerAction::Start
+            | ComputerAction::Restart
+            | ComputerAction::Desktop { .. }
+            | ComputerAction::Browser { .. }
     );
     let mut lease = manager.resume(ctx)?;
     lease.preserve_workspace_on_drop();
     let result = (|| -> Result<Value, AgentError> {
         Ok(match action {
+            ComputerAction::Browser { .. } => {
+                let request = prepared_browser
+                    .take()
+                    .ok_or(AgentError::Configuration("browser request missing"))?;
+                start_if_stopped(&mut lease, ctx)?;
+                json!(lease.browser(request, ctx)?)
+            }
             ComputerAction::Desktop { request: _, output } => {
                 use base64::Engine as _;
                 use namzu_computer::desktop::Reply;
