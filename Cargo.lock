@@ -1074,6 +1074,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "namzu-mcp"
+version = "0.1.0"
+dependencies = [
+ "namzu-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "namzu-pals"
 version = "0.1.0"
 dependencies = [

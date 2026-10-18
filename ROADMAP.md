@@ -61,7 +61,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
-| 3 | MCP | Eksik; yeniden 3.1'den | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
+| 3 | MCP | 3.1 tamam; 3.2–3.8 eksik | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
@@ -134,12 +134,12 @@ sonuçlar, çökme/iptal ve gerçek container temizliği. Görsel yetenekler 4't
 
 ## 3. MCP — sekiz küçük teslim
 
-Yeni depoda tüm MCP parçaları eksik. Eski projede 3.6'ya kadar ilerlenmişti;
-3.7 başlamamıştı. Aşağıdaki kapsam önceki ilerleme kaydından yeniden düzenlendi.
+Yeni depoda MCP 3.1, 2026-10-18 tarihinde yeniden uygulandı; 3.2–3.8 eksik.
+Eski projede 3.6'ya kadar ilerlenmişti; 3.7 başlamamıştı. Aşağıdaki kapsam önceki ilerleme kaydından yeniden düzenlendi.
 
 | Parça | Kapsam | Kabul ölçütü |
 | --- | --- | --- |
-| 3.1 | Protokol ve veri tipleri | JSON-RPC, sürüm/initialize, ID eşleştirme, sınırlar, hata/iptal |
+| **3.1 — tamam** | Protokol ve veri tipleri | JSON-RPC, sürüm/initialize, ID eşleştirme, sınırlar, hata/iptal; 26 yeni test |
 | 3.2 | Stdio taşıma | Kontrollü env/cwd, shell'siz başlatma, sınırlı stderr, süreç ağacı/temiz kapatma |
 | 3.3 | HTTP taşıma | Streamable HTTP/uyumluluk, SSE, session, deadline, TLS/proxy; belirsiz etkiyi tekrarlamama |
 | 3.4 | Config, yönetim ve güven | Server manager, profil/öncelikler, proje güveni, allow/deny/onay, CLI yönetimi |
@@ -210,7 +210,12 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 3.1 — MCP protokolü, veri tipleri ve JSON-RPC sınırları.**
+**Sıradaki iş: 3.2 — MCP stdio taşıması, framing ve kontrollü süreç yaşam döngüsü.**
+3.1 tamamlandı: bağımsız `namzu-mcp`, 2025-11-25 / 2025-06-18 sürüm anlaşması,
+strict/bounded JSON-RPC, initialization write ack, request ID/bütçe rezervasyonu,
+context deadline/iptali ve replay reddi. 26 yeni test, toplam 213 Rust testi;
+workspace format/Clippy/release ve offline protokol örneği geçti. Canlı model ve
+MCP sunucusu çağrısı 0. [SDK ve kapsam](docs/MCP.md).
 0.2–0.5 tamamlandı. Cihaz onayıyla native Codex hesabı bağlandı; gerçek
 katalogda GPT-6-Luna bulundu ve Jcode da aynı hesaba bağlandı. Ortak model ve
 low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı altında
@@ -218,7 +223,7 @@ low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı 
 Normal testler hâlâ canlı model çağırmaz. TUI 1.1–1.4 tamamlandı: 103 test,
 format, Clippy, release, 25 gerçek Linux PTY kontrolü ve ayrı GPT-6-Luna read-only
 canlı görev doğrulandı. Kabul ve sınırlar docs/TUI-ACCEPTANCE.md'de.
-Pals 2.1–2.6 tamamlandı; MCP henüz eksik. Kullanıcı kaldığı yerden devam
+Pals 2.1–2.6 ve MCP 3.1 tamamlandı; MCP 3.2–3.8 eksik. Kullanıcı kaldığı yerden devam
 edilmesini ve her aşamada ayrı commit/GitHub yüklemesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

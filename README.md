@@ -76,7 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4 ve Pals 2.1–2.6 tamamlandı; sıradaki modül MCP 3.1.
+- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP protokol temeli 3.1 tamamlandı.
+  Gerçek stdio bağlantısı 3.2'de eklenecek.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -222,6 +223,21 @@ namzu-rs pal tui PAL_ID
 
 [CLI/TUI kullanımı](docs/PALS-CLI.md), [kabul ve sınırlar](docs/PALS-ACCEPTANCE.md),
 [SDK sözleşmesi](docs/PALS.md).
+
+## 3.1 — MCP protokol temeli
+
+Bağımsız `namzu-mcp` paketi JSON-RPC, initialize/sürüm anlaşması, capability
+kontrolü, ID eşleştirme, mesaj sınırları ve parent deadline/iptali uygular.
+İptal edilen isteğin geç yanıtı başka bir görevin sonucu sayılmaz; belirsiz
+istek otomatik tekrarlanmaz. Henüz stdio/HTTP taşıması veya CLI MCP araçları yoktur.
+
+```sh
+cargo run --release -p namzu-mcp --example protocol --locked
+```
+
+26 yeni protokol testi; toplam 213 Rust testi, format/Clippy/release ve offline
+örnek geçti. Canlı model veya gerçek MCP server çağrısı 0.
+[SDK sözleşmesi, kabul ve sınırlar](docs/MCP.md). Sıradaki parça **3.2 — stdio**.
 
 ## Yerel checkpoint ve kurtarma
 
