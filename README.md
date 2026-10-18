@@ -76,8 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.3 tamamlandı.
-  Protokol, Unix stdio ve Streamable HTTP/SSE var; yönetim/izinler 3.4'te.
+- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.4 tamamlandı.
+  Protokol, Unix stdio, HTTP/SSE, profil yönetimi ve güven/izinler var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -266,8 +266,27 @@ Model çağrısı 0. [Kullanım ve sınırlar](docs/MCP-HTTP.md).
 cargo run --release -p namzu-mcp --example http -- https://server.example/mcp
 ```
 
-Sıradaki parça **3.4 — Config, yönetim ve güven**. OAuth 3.7, yeniden bağlanma
-ve recovery 3.8'dedir. Eski 2024 HTTP+SSE endpoint keşfi desteklenmez.
+OAuth 3.7, yeniden bağlanma ve recovery 3.8'dedir.
+Eski 2024 HTTP+SSE endpoint keşfi desteklenmez.
+
+## 3.4 — MCP config, yönetim ve güven
+
+Özel kullanıcı profilleri ve açıkça seçilen proje config'i, içerik kimliğine bağlı
+trust, deny/allow/approval birleşimi ve tek kullanımlık işlem izni eklendi.
+Manager gerçek stdio/HTTP bağlantılarını aynı thread'de yönetir; belirsiz etkiler
+saklanır ve otomatik replay yapılmaz. 27 yeni test, toplam 295 Rust testi.
+
+```sh
+namzu-rs mcp init
+namzu-rs mcp import mcp.config.example.json
+namzu-rs mcp list
+namzu-rs mcp check SERVER --approve --timeout 300
+```
+
+Örnek sunucular disabled ve yollar yer tutucudur; gerçek endpoint/program
+seçilmelidir. Model kotası kullanılmadı. [CLI/SDK, kabul ve sınırlar](docs/MCP-MANAGEMENT.md).
+Sıradaki parça **3.5 — Keşif ve sunucu sağlayıcıları**. Normal exec/TUI/Pal
+MCP araç entegrasyonu 3.6'dadır.
 
 ## Yerel checkpoint ve kurtarma
 

@@ -146,6 +146,21 @@ impl TurnContext {
                 .ok_or(AgentError::Configuration("timeout overflow"))?,
         })
     }
+    /// Prove a caller retained this context's exact cancellation ancestry and
+    /// did not extend its deadline. Clones and children satisfy this relation.
+    pub fn is_bounded_by(&self, parent: &Self) -> bool {
+        if self.deadline > parent.deadline {
+            return false;
+        }
+        let mut node = Some(&self.cancellation.0);
+        while let Some(current) = node {
+            if Arc::ptr_eq(current, &parent.cancellation.0) {
+                return true;
+            }
+            node = current.parent.as_ref();
+        }
+        false
+    }
     pub fn remaining(&self) -> Result<Duration, AgentError> {
         if self.cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
@@ -520,6 +535,21 @@ mod tests {
         child.cancellation().cancel();
         assert_eq!(grandchild.remaining(), Err(AgentError::Cancelled));
         assert!(parent.remaining().is_ok());
+    }
+    #[test]
+    fn context_bounds_require_both_deadline_and_cancellation_ancestry() {
+        let root = TurnContext::new(Duration::from_secs(30), Cancellation::default()).unwrap();
+        assert!(root.clone().is_bounded_by(&root));
+        let child = root.child(Duration::from_secs(1)).unwrap();
+        assert!(child.is_bounded_by(&root));
+        assert!(!root.is_bounded_by(&child));
+        let independent =
+            TurnContext::new(Duration::from_millis(1), Cancellation::default()).unwrap();
+        assert!(!independent.is_bounded_by(&root));
+        let extended = TurnContext::new(Duration::from_secs(60), root.cancellation()).unwrap();
+        assert!(!extended.is_bounded_by(&root));
+        child.cancellation().cancel();
+        assert!(root.remaining().is_ok());
     }
     #[test]
     fn expired_context_returns_timeout_without_racing_a_timer() {

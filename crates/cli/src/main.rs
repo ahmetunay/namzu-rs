@@ -1,6 +1,7 @@
 mod benchmark;
 mod config;
 mod execute;
+mod mcp;
 mod pals;
 mod tui;
 use clap::{Parser, Subcommand};
@@ -29,6 +30,8 @@ enum Command {
     Tui(Box<tui::TuiArgs>),
     /// Persistent Pals, bounded teams, mailbox workers and owned computers.
     Pal(Box<pals::PalArgs>),
+    /// Explicit MCP profiles, project trust and connection checks.
+    Mcp(Box<mcp::Args>),
     /// List or inspect private sessions. Output may contain private task content.
     Session {
         #[arg(long)]
@@ -254,6 +257,24 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Mcp(args) => {
+            return match mcp::run(*args, cancellation) {
+                Ok(value) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"ok","output":value})
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Pal(args) => {
             return match pals::run(*args, cancellation) {
                 Ok(true) => ExitCode::SUCCESS,

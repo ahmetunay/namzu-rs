@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "default_profile": "default",
+  "profiles": {
+    "default": {
+      "servers": {
+        "local": {
+          "enabled": false,
+          "transport": {
+            "type": "stdio",
+            "program": "/absolute/path/to/mcp-server",
+            "args": [],
+            "cwd": "/absolute/path/to/workspace",
+            "env": {}
+          },
+          "policy": {
+            "allow": ["connect", "ping", "tools/list", "tools/call:read_file"],
+            "deny": ["tools/call:delete_file"],
+            "require_approval": true
+          },
+          "timeout_secs": 300
+        },
+        "remote": {
+          "enabled": false,
+          "transport": {
+            "type": "http",
+            "url": "https://mcp.example.org/mcp",
+            "bearer_env": "MCP_SERVER_TOKEN"
+          },
+          "policy": {
+            "allow": ["connect", "ping"],
+            "deny": [],
+            "require_approval": true
+          },
+          "timeout_secs": 300
+        }
+      }
+    }
+  }
+}

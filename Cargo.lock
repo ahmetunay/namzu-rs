@@ -1038,6 +1038,7 @@ dependencies = [
  "namzu-bench",
  "namzu-computer",
  "namzu-core",
+ "namzu-mcp",
  "namzu-pals",
  "namzu-provider",
  "namzu-session",
@@ -1077,12 +1078,15 @@ dependencies = [
 name = "namzu-mcp"
 version = "0.1.0"
 dependencies = [
+ "cap-std",
  "libc",
  "namzu-core",
+ "namzu-session",
  "native-tls",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",

@@ -264,6 +264,28 @@ pub fn decode(bytes: &[u8], limits: &Limits) -> Result<Message, Error> {
     d.end().map_err(|_| Error::Json)?;
     envelope(value)
 }
+pub(crate) fn validate_config_json(bytes: &[u8]) -> Result<(), Error> {
+    let limits = Limits {
+        message_bytes: 256 * 1024,
+        string_bytes: 65536,
+        ..Limits::default()
+    };
+    if bytes.len() > limits.message_bytes {
+        return Err(Error::MessageLimit);
+    }
+    let mut d = serde_json::Deserializer::from_slice(bytes);
+    let mut budget = Budget {
+        limits: &limits,
+        nodes: 0,
+    };
+    Seed {
+        budget: &mut budget,
+        depth: 0,
+    }
+    .deserialize(&mut d)
+    .map_err(|_| Error::Json)?;
+    d.end().map_err(|_| Error::Json)
+}
 struct Writer {
     bytes: Vec<u8>,
     max: usize,

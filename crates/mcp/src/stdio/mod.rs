@@ -154,12 +154,28 @@ impl Client {
         limits: Limits,
         parent: &TurnContext,
     ) -> Result<Self, Error> {
+        Self::connect_in_context(spec, info, limits, parent, parent)
+    }
+    /// Keep the connection under parent while bounding only initialization by a
+    /// shorter child context. Independent cancellation roots are rejected.
+    pub fn connect_in_context(
+        spec: Spec,
+        info: Implementation,
+        limits: Limits,
+        parent: &TurnContext,
+        handshake: &TurnContext,
+    ) -> Result<Self, Error> {
+        if !handshake.is_bounded_by(parent) {
+            return Err(Error::Configuration);
+        }
+        handshake.remaining()?;
         parent.remaining()?;
         limits.validate()?;
         spec.validate(&limits)?;
         let session = ClientSession::new(info, limits.clone())?;
         let lifetime = parent.child(parent.remaining()?)?;
         parent.remaining()?;
+        handshake.remaining()?;
         let mut process = Process::spawn(&spec)?;
         let input = process.child.stdin.take().ok_or(Error::Io)?;
         let output = process.child.stdout.take().ok_or(Error::Io)?;
@@ -190,15 +206,15 @@ impl Client {
             outstanding: BTreeMap::new(),
             closed: None,
         };
-        let init = client.session.initialize(parent)?;
+        let init = client.session.initialize(handshake)?;
         client.enqueue_request(init)?;
         loop {
-            match client.next(parent)? {
+            match client.next(handshake)? {
                 Incoming::Initialized(_) => {
                     let notification = client.session.initialized_notification()?;
                     client.enqueue(notification)?;
                     while !client.writes.is_empty() {
-                        client.check(parent)?;
+                        client.check(handshake)?;
                         if let Err(e) = client.pump() {
                             client.close();
                             return Err(e);

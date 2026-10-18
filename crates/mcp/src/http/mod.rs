@@ -79,20 +79,7 @@ async fn wait<T>(
 impl Client {
     pub fn connect(spec: Spec, info: Implementation, ctx: &TurnContext) -> Result<Self, Error> {
         ctx.remaining()?;
-        let endpoint = Url::parse(&spec.endpoint).map_err(|_| Error::Settings)?;
-        let loopback = endpoint.host_str().is_some_and(|host| {
-            host.trim_matches(['[', ']'])
-                .parse::<std::net::IpAddr>()
-                .is_ok_and(|ip| ip.is_loopback())
-        });
-        if !(endpoint.scheme() == "https" || endpoint.scheme() == "http" && loopback)
-            || endpoint.host_str().is_none()
-            || !endpoint.username().is_empty()
-            || endpoint.password().is_some()
-            || endpoint.fragment().is_some()
-        {
-            return Err(Error::Settings);
-        }
+        let endpoint = validate_endpoint(&spec.endpoint)?;
         let token = spec
             .bearer
             .map(|token| {
@@ -450,4 +437,22 @@ impl Stream {
             count: 0,
         }
     }
+}
+
+pub(crate) fn validate_endpoint(value: &str) -> Result<Url, Error> {
+    let endpoint = Url::parse(value).map_err(|_| Error::Settings)?;
+    let loopback = endpoint.host_str().is_some_and(|host| {
+        host.trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+    });
+    if !(endpoint.scheme() == "https" || endpoint.scheme() == "http" && loopback)
+        || endpoint.host_str().is_none()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.fragment().is_some()
+    {
+        return Err(Error::Settings);
+    }
+    Ok(endpoint)
 }
