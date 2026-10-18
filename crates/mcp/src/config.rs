@@ -42,6 +42,8 @@ pub enum Error {
     Http(#[from] crate::http::Error),
     #[error(transparent)]
     Discovery(#[from] crate::discovery::Error),
+    #[error(transparent)]
+    OAuth(#[from] crate::oauth::Error),
     #[error("MCP transport is unavailable on this platform")]
     Unsupported,
 }
@@ -139,6 +141,8 @@ pub struct Server {
     #[serde(default = "yes")]
     pub enabled: bool,
     pub transport: Transport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<crate::oauth::Settings>,
     #[serde(default)]
     pub policy: Policy,
     #[serde(default = "timeout")]
@@ -201,6 +205,9 @@ impl Document {
                     return Err(Error::Configuration);
                 }
                 server.policy.validate()?;
+                if server.oauth.is_some() {
+                    crate::oauth::Target::from_server(server).map_err(|_| Error::Configuration)?;
+                }
                 match &server.transport {
                     Transport::Stdio {
                         program,
@@ -343,6 +350,14 @@ fn hash(value: &impl Serialize) -> Result<String, Error> {
 struct Trust {
     projects: BTreeMap<PathBuf, String>,
 }
+pub struct OAuthLogin<'a> {
+    pub profile: Option<&'a str>,
+    pub project: Option<&'a Project>,
+    pub server: &'a str,
+    pub ceiling: Policy,
+    pub approve: bool,
+    pub port: u16,
+}
 pub struct Registry {
     store: PrivateStore,
 }
@@ -351,6 +366,56 @@ impl Registry {
         Ok(Self {
             store: PrivateStore::open(state)?.child("mcp")?,
         })
+    }
+    pub(crate) fn oauth_store(&self) -> Result<PrivateStore, Error> {
+        Ok(self.store.child("oauth")?)
+    }
+    /// Explicit host operation. Hold configuration admission during the login;
+    /// no agent or HTTP challenge starts this flow automatically.
+    pub fn oauth_login(
+        &self,
+        options: OAuthLogin<'_>,
+        ctx: &namzu_core::TurnContext,
+        display: impl FnOnce(&str),
+    ) -> Result<(), Error> {
+        let _lock = self.lock()?;
+        let resolved = self.resolve(options.profile, options.project, &options.ceiling)?;
+        let entry = resolved
+            .servers
+            .get(options.server)
+            .ok_or(Error::NotFound)?;
+        match entry.decide("oauth/login") {
+            Decision::Deny => return Err(Error::Denied),
+            Decision::Ask if !options.approve => return Err(Error::ApprovalRequired),
+            _ => {}
+        }
+        let target = crate::oauth::Target::from_server(&entry.server)?;
+        crate::oauth::Vault::new(self.oauth_store()?).login(&target, options.port, ctx, display)?;
+        Ok(())
+    }
+    pub fn oauth_status(
+        &self,
+        profile: Option<&str>,
+        project: Option<&Project>,
+        server: &str,
+        logout: bool,
+    ) -> Result<crate::oauth::Status, Error> {
+        let _lock = self.lock()?;
+        let resolved = self.resolve(
+            profile,
+            project,
+            &Policy {
+                require_approval: false,
+                ..Policy::default()
+            },
+        )?;
+        let entry = resolved.servers.get(server).ok_or(Error::NotFound)?;
+        let target = crate::oauth::Target::from_server(&entry.server)?;
+        let vault = crate::oauth::Vault::new(self.oauth_store()?);
+        if logout {
+            vault.logout(&target)?;
+        }
+        Ok(vault.status(&target)?)
     }
     pub(crate) fn lock(&self) -> Result<StoreLock, Error> {
         Ok(self.store.lock("registry")?)

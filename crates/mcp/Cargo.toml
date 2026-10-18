@@ -9,6 +9,8 @@ publish.workspace = true
 namzu-core.workspace = true
 namzu-session.workspace = true
 sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.4"
 jsonschema = { version = "0.33", default-features = false }
 cap-std = "3"
 serde.workspace = true

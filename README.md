@@ -302,7 +302,7 @@ namzu-rs mcp discover SERVER templates --approve
 
 [SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
 kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
-3.6 entegrasyonu tamamlandı; sıradaki parça **3.7 — OAuth ve kimlik bilgileri**.
+3.6 entegrasyonu tamamlandı; sıradaki parça **3.8 — toparlanma ve birlikte çalışabilirlik**.
 
 ## Yerel checkpoint ve kurtarma
 
@@ -339,4 +339,13 @@ BACKUP.md'deki push ve uzak commit doğrulaması yapılır.
 MCP 3.1–3.6 hazır: açık `--mcp-server`, normal exec/TUI ve Pal entegrasyonu,
 input/output JSON Schema doğrulaması ve owned guest stdio. Kullanım, izin
 davranışı ve mevcut sınırlar [MCP ajan belgesinde](docs/MCP-AGENT.md).
-OAuth 3.7 ve reconnect/toparlanma 3.8 henüz uygulanmadı.
+OAuth 3.7 tamamlandı; reconnect/toparlanma 3.8 henüz uygulanmadı.
+
+## MCP OAuth
+
+HTTP sunucularına açık `mcp auth login SERVER --approve` ile bağlanılabilir.
+PKCE/S256, loopback callback, özel token deposu ve bağlantı öncesi refresh
+uygulanır. `mcp auth status SERVER` durumu gösterir; `mcp auth logout SERVER`
+yerel credential'ı siler. Ajan giriş başlatmaz ve belirsiz refresh/araç
+çağrısını tekrar etmez. Örnek config ve sağlayıcı uyumluluk sınırları
+[OAuth belgesinde](docs/MCP-OAUTH.md).

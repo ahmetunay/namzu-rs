@@ -5,6 +5,7 @@ pub mod config;
 pub mod discovery;
 pub mod http;
 pub mod manager;
+pub mod oauth;
 pub mod schema;
 mod session;
 #[cfg(unix)]

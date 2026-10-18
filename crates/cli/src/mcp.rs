@@ -33,6 +33,11 @@ pub struct Args {
 }
 #[derive(Subcommand)]
 enum Action {
+    /// Explicit OAuth management; agent calls never start interactive login.
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
     Init,
     /// Validate and atomically replace private user profiles. Does not launch anything.
     Import {
@@ -99,6 +104,26 @@ enum Action {
     },
 }
 #[derive(Subcommand)]
+enum AuthAction {
+    Login {
+        server: String,
+        #[arg(long)]
+        approve: bool,
+        /// Loopback callback port; zero chooses an available port.
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        #[arg(long, default_value_t=300, value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+    },
+    Status {
+        server: String,
+    },
+    /// Delete local credentials; does not revoke the provider's token remotely.
+    Logout {
+        server: String,
+    },
+}
+#[derive(Subcommand)]
 enum ProfileAction {
     List,
     Create { name: String },
@@ -136,12 +161,50 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
                 | Action::Show { .. }
                 | Action::Check { .. }
                 | Action::Discover { .. }
+                | Action::Auth { .. }
         )
     {
         return Err(Error::Configuration);
     }
     let profile = args.profile.as_deref();
     match args.action {
+        Action::Auth { action } => match action {
+            AuthAction::Login {
+                server,
+                approve,
+                port,
+                timeout,
+            } => {
+                let ctx = TurnContext::new(Duration::from_secs(timeout), cancellation)?;
+                registry.oauth_login(
+                    namzu_mcp::config::OAuthLogin {
+                        profile,
+                        project: project.as_ref(),
+                        server: &server,
+                        ceiling,
+                        approve,
+                        port,
+                    },
+                    &ctx,
+                    |url| {
+                        use std::io::Write;
+                        eprintln!("Open this authorization URL in your browser:\n{url}");
+                        let _ = std::io::stderr().flush();
+                    },
+                )?;
+                Ok(json!({"logged_in":true,"model_calls":0}))
+            }
+            AuthAction::Status { server } => Ok(json!(registry.oauth_status(
+                profile,
+                project.as_ref(),
+                &server,
+                false
+            )?)),
+            AuthAction::Logout { server } => {
+                registry.oauth_status(profile, project.as_ref(), &server, true)?;
+                Ok(json!({"logged_out":true,"remote_revoked":false}))
+            }
+        },
         Action::Init => {
             registry.init()?;
             Ok(json!({"initialized":true}))

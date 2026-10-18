@@ -397,6 +397,13 @@ impl<'a> Manager<'a> {
                         return Err(Error::Unsupported);
                     }
                     let mut spec = crate::http::Spec::new(url);
+                    if let Some(settings) = server.oauth {
+                        let target = crate::oauth::Target::new(spec.endpoint.clone(), settings)?;
+                        spec.bearer = Some(
+                            crate::oauth::Vault::new(self.registry.oauth_store()?)
+                                .access_token(&target, &context)?,
+                        );
+                    }
                     if let Some(name) = bearer_env {
                         spec.bearer = Some(std::env::var(name).map_err(|_| Error::Configuration)?);
                     }
