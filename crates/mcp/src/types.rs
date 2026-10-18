@@ -1,5 +1,5 @@
 //! Typed common payloads. Extensions are retained as data, never treated as
-//! permissions. Discovery, JSON Schema evaluation and content conversion are 3.5.
+//! permissions. Discovery validation lives in discovery/schema; model conversion is 3.6.
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -194,6 +194,87 @@ pub struct CallToolResult {
     pub structured_content: Option<Map<String, Value>>,
     #[serde(default)]
     pub is_error: bool,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Resource {
+    pub uri: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceTemplate {
+    pub uri_template: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PromptArgument {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Prompt {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub arguments: Vec<PromptArgument>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceContents {
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ReadResourceResult {
+    pub contents: Vec<ResourceContents>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PromptMessage {
+    pub role: String,
+    pub content: Content,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GetPromptResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub messages: Vec<PromptMessage>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }

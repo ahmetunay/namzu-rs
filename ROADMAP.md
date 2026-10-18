@@ -61,7 +61,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 0 | SDK, terminal araçları, session, Codex ve benchmark temeli | 0.1–0.5 tamam | Gerçek görev, oturum devamı, deterministik benchmark |
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
-| 3 | MCP | 3.1–3.4 tamam; 3.5–3.8 eksik | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
+| 3 | MCP | 3.1–3.5 tamam; 3.6–3.8 eksik | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | Eksik | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
@@ -134,7 +134,7 @@ sonuçlar, çökme/iptal ve gerçek container temizliği. Görsel yetenekler 4't
 
 ## 3. MCP — sekiz küçük teslim
 
-Yeni depoda MCP 3.1–3.4, 2026-10-18 tarihinde yeniden uygulandı; 3.5–3.8 eksik.
+Yeni depoda MCP 3.1–3.5, 2026-10-18 tarihinde yeniden uygulandı; 3.6–3.8 eksik.
 Eski projede 3.6'ya kadar ilerlenmişti; 3.7 başlamamıştı. Aşağıdaki kapsam önceki ilerleme kaydından yeniden düzenlendi.
 
 | Parça | Kapsam | Kabul ölçütü |
@@ -143,8 +143,8 @@ Eski projede 3.6'ya kadar ilerlenmişti; 3.7 başlamamıştı. Aşağıdaki kaps
 | **3.2 — tamam** | Stdio taşıma | Kontrollü env/cwd, shell'siz başlatma, bounded framing/I/O, stderr kotası, süreç grubu/temiz kapatma; 25 yeni test |
 | **3.3 — tamam** | HTTP taşıma | İki Streamable HTTP sürümü, bounded JSON/SSE, session/GET/DELETE, deadline/iptal, TLS/CONNECT proxy; belirsiz etkiyi tekrarlamama; 30 yeni test |
 | **3.4 — tamam** | Config, yönetim ve güven | Özel/atomik profiller, içerik bağlı proje trust, layered allow/deny/onay, tek kullanımlık grant, stdio/HTTP manager ve CLI; 27 yeni test |
-| 3.5 | Keşif ve sunucu sağlayıcıları | Tools/resources/prompts/templates, sayfalama, bildirimler, isim/şema sınırları |
-| 3.6 | SDK/CLI/TUI/Pals entegrasyonu | Araç/içerik aktarımı, çocuk izin tavanı, guest stdio; sessiz host fallback yok |
+| **3.5 — tamam** | Keşif ve sunucu sağlayıcıları | Atomic tools/resources/prompts/templates katalogları, bounded sayfalama, bildirim invalidation, isim/şema metadata sınırları ve typed sonuçlar; 40 yeni test |
+| 3.6 | SDK/CLI/TUI/Pals entegrasyonu | Araç/içerik aktarımı ve JSON Schema instance doğrulaması, çocuk izin tavanı, guest stdio; sessiz host fallback yok |
 | 3.7 | OAuth ve kimlik bilgileri | Metadata discovery, PKCE/state/callback, token saklama/refresh; otomatik etkileşimli login yok |
 | 3.8 | Toparlanma ve birlikte çalışabilirlik | Kopma/reconnect, subscription yaşam döngüsü, farklı fixture sunucuları |
 
@@ -210,7 +210,14 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 3.5 — MCP keşif ve sunucu sağlayıcıları.**
+**Sıradaki iş: 3.6 — MCP SDK/CLI/TUI/Pals entegrasyonu.**
+3.5 tamamlandı: dört katalog türü, atomic/bounded sayfalama, yerel şema metadata
+sınırları, typed tool/read/prompt içerikleri, stdio/HTTP bildirim kuyruğu ve
+list_changed invalidation, stale katalog grant reddi, izinli CLI discover.
+40 yeni test, toplam 335 Rust testi; fmt/Clippy/release ve release keşif kabulü.
+Model çağrısı 0. Tam schema instance kontrolü/model içerik dönüşümü 3.6'dadır.
+[Kabul ve sınırlar](docs/MCP-DISCOVERY.md).
+
 3.4 tamamlandı: özel kullanıcı profilleri ve server CRUD/CLI, açık proje seçimi,
 SHA-256 içerik trust/revoke, user/project/host policy birleşimi, işlem başına
 tek kullanımlık snapshot-bound permit ve stdio/HTTP manager. 27 yeni test,
@@ -244,7 +251,7 @@ low effort ile seri canlı koşum, bağımsız orakllar ve 300 saniye sınırı 
 Normal testler hâlâ canlı model çağırmaz. TUI 1.1–1.4 tamamlandı: 103 test,
 format, Clippy, release, 25 gerçek Linux PTY kontrolü ve ayrı GPT-6-Luna read-only
 canlı görev doğrulandı. Kabul ve sınırlar docs/TUI-ACCEPTANCE.md'de.
-Pals 2.1–2.6 ve MCP 3.1–3.4 tamamlandı; MCP 3.5–3.8 eksik. Kullanıcı kaldığı yerden devam
+Pals 2.1–2.6 ve MCP 3.1–3.5 tamamlandı; MCP 3.6–3.8 eksik. Kullanıcı kaldığı yerden devam
 edilmesini ve her aşamada ayrı commit/GitHub yüklemesini istedi.
 
 ## Kayıp kaynağı tanıma bilgisi

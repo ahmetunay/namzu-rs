@@ -296,6 +296,17 @@ impl Client {
         params: Option<Map<String, Value>>,
         context: &TurnContext,
     ) -> Result<Result<Map<String, Value>, crate::RpcError>, Error> {
+        self.call_observed(method, params, context, |_| Ok(()))
+    }
+    /// Surface notifications during a sequential call. Observer errors close the
+    /// generation and never cause a retry; callbacks must not execute host tools.
+    pub fn call_observed(
+        &mut self,
+        method: &str,
+        params: Option<Map<String, Value>>,
+        context: &TurnContext,
+        mut observer: impl FnMut(Incoming) -> Result<(), Error>,
+    ) -> Result<Result<Map<String, Value>, crate::RpcError>, Error> {
         if !self.outstanding.is_empty() {
             return Err(Error::Busy);
         }
@@ -307,7 +318,13 @@ impl Client {
                     result,
                     ..
                 } if received == id => return Ok(result),
-                Incoming::Notification { .. } | Incoming::IgnoredLateReply => (),
+                notice @ Incoming::Notification { .. } => {
+                    if let Err(error) = observer(notice) {
+                        self.close();
+                        return Err(error);
+                    }
+                }
+                Incoming::IgnoredLateReply => (),
                 _ => {
                     self.close();
                     return Err(Error::Protocol(crate::Error::ResponseId));

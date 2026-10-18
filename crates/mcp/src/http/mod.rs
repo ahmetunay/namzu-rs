@@ -145,6 +145,10 @@ impl Client {
             event
         })
     }
+    pub(crate) fn fence_generation(&mut self) {
+        self.uncertain.extend(self.session.close());
+        self.listening = None;
+    }
     fn fence<T>(&mut self, result: Result<T, Error>) -> Result<T, Error> {
         if result.is_err() {
             self.uncertain.extend(self.session.close());

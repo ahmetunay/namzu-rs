@@ -236,3 +236,78 @@ fn add_update_and_cli_permission_ceiling_are_explicit() {
     );
     assert!(value(&denied)["error"].as_str().unwrap().contains("denied"));
 }
+fn discovery_spec(root: &Path, mode: &str) -> Value {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../mcp/tests/fixtures/discovery_server.py")
+        .canonicalize()
+        .unwrap();
+    json!({"transport":{"type":"stdio","program":"/usr/bin/python3","args":[fixture,mode],"cwd":root},"policy":{"require_approval":true}})
+}
+#[test]
+fn cli_discovery_lists_all_kinds_without_executing_tools_or_auto_reading() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let file = root.path().join("spec.json");
+    import(&state, &file, discovery_spec(root.path(), "normal"));
+    for kind in ["tools", "resources", "prompts", "templates"] {
+        let output = run(&state, &["discover", "fixture", kind, "--approve"]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(
+            value(&output)["output"]["count"],
+            if kind == "tools" { 2 } else { 1 }
+        );
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("untrusted definition"));
+    }
+    let details = run(
+        &state,
+        &["discover", "fixture", "tools", "--approve", "--details"],
+    );
+    assert!(details.status.success());
+    assert_eq!(
+        value(&details)["output"]["items"][0]["definition"]["name"],
+        "read"
+    );
+    let methods = std::fs::read_to_string(root.path().join("requests.jsonl")).unwrap();
+    for method in ["tools/call", "resources/read", "prompts/get"] {
+        assert!(!methods.contains(method));
+    }
+}
+#[test]
+fn cli_discovery_approval_deny_and_rpc_errors_do_not_publish_partial_results() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let file = root.path().join("spec.json");
+    import(&state, &file, discovery_spec(root.path(), "rpc_error"));
+    assert!(
+        !run(&state, &["discover", "fixture", "tools"])
+            .status
+            .success()
+    );
+    assert!(!root.path().join("requests.jsonl").exists());
+    let denied = run(
+        &state,
+        &[
+            "--deny",
+            "tools/list",
+            "discover",
+            "fixture",
+            "tools",
+            "--approve",
+        ],
+    );
+    assert!(!denied.status.success());
+    assert!(
+        !std::fs::read_to_string(root.path().join("requests.jsonl"))
+            .unwrap()
+            .contains("tools/list")
+    );
+    let failed = run(&state, &["discover", "fixture", "tools", "--approve"]);
+    assert!(!failed.status.success());
+    assert_eq!(value(&failed)["status"], "error");
+    assert!(!String::from_utf8_lossy(&failed.stdout).contains("DO_NOT_LOG_REMOTE_SECRET"));
+    assert!(value(&failed).get("output").is_none());
+}

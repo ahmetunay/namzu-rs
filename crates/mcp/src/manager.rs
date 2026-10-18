@@ -2,13 +2,14 @@
 use crate::{
     Id, Incoming, Limits, Message,
     config::{Decision, Error, Policy, Project, Registry, Resolved, Transport},
+    discovery::{Catalog, Kind, Notification, Pager},
     types::Implementation,
 };
 use namzu_core::TurnContext;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -22,6 +23,7 @@ pub struct Plan {
     method: Option<String>,
     params: Option<Map<String, Value>>,
     decision: Decision,
+    catalog_revision: Option<(Kind, u64)>,
 }
 impl Plan {
     pub fn decision(&self) -> Decision {
@@ -55,6 +57,7 @@ pub struct Permit(Plan);
 pub enum Outcome {
     Connected,
     Reply(Result<Map<String, Value>, crate::RpcError>),
+    Events { supported: bool },
 }
 #[derive(Serialize)]
 pub struct Status {
@@ -79,6 +82,13 @@ pub struct Manager<'a> {
     connections: BTreeMap<String, Connection>,
     abandoned: BTreeMap<String, Vec<crate::Abandoned>>,
     parent: TurnContext,
+    catalogs: BTreeMap<(String, Kind), Catalog>,
+    catalog_sizes: BTreeMap<(String, Kind), usize>,
+    catalog_bytes: usize,
+    revision: u64,
+    epochs: BTreeMap<(String, Kind), u64>,
+    notices: VecDeque<(Notification, usize)>,
+    notice_bytes: usize,
 }
 impl<'a> Manager<'a> {
     pub fn new(
@@ -101,6 +111,13 @@ impl<'a> Manager<'a> {
             connections: BTreeMap::new(),
             abandoned: BTreeMap::new(),
             parent: parent.clone(),
+            catalogs: BTreeMap::new(),
+            catalog_sizes: BTreeMap::new(),
+            catalog_bytes: 0,
+            revision: 1,
+            epochs: BTreeMap::new(),
+            notices: VecDeque::new(),
+            notice_bytes: 0,
         })
     }
     fn retire_connections(&mut self) {
@@ -189,6 +206,7 @@ impl<'a> Manager<'a> {
             method,
             params,
             decision: entry.decide(&target),
+            catalog_revision: None,
         })
     }
     pub fn execute(&mut self, permit: Permit, context: &TurnContext) -> Result<Outcome, Error> {
@@ -206,6 +224,14 @@ impl<'a> Manager<'a> {
         if plan.fingerprint != self.resolved.fingerprint {
             return Err(Error::Stale);
         }
+        if let Some((kind, revision)) = plan.catalog_revision
+            && self
+                .catalogs
+                .get(&(plan.server.clone(), kind))
+                .is_none_or(|c| c.revision != revision)
+        {
+            return Err(crate::discovery::Error::Stale.into());
+        }
         let entry = self
             .resolved
             .servers
@@ -221,18 +247,81 @@ impl<'a> Manager<'a> {
                 .connections
                 .get_mut(&plan.server)
                 .ok_or(Error::NotConnected)?;
+            let mut notices = vec![];
+            let mut bytes = 0usize;
             let result = match connection {
                 #[cfg(unix)]
-                Connection::Stdio(client) => client
-                    .call(&method, plan.params, &context)
-                    .map(Outcome::Reply)
-                    .map_err(Error::from),
-                Connection::Http(client) => match client.call(&method, plan.params, &context) {
-                    Ok(Incoming::Reply { result, .. }) => Ok(Outcome::Reply(result)),
-                    Ok(_) => Err(Error::Configuration),
-                    Err(e) => Err(e.into()),
-                },
+                Connection::Stdio(client) => {
+                    if method == "events/listen" {
+                        match client.next(&context) {
+                            Ok(event @ Incoming::Notification { .. }) => {
+                                notices.push(event);
+                                Ok(Outcome::Events { supported: true })
+                            }
+                            Ok(_) => Err(Error::Configuration),
+                            Err(e) => Err(e.into()),
+                        }
+                    } else {
+                        client
+                            .call_observed(&method, plan.params, &context, |event| {
+                                let size = notification_size(&event)
+                                    .map_err(|_| crate::stdio::Error::Backpressure)?;
+                                if notices.len() >= 64
+                                    || bytes.saturating_add(size) > 2 * 1024 * 1024
+                                {
+                                    return Err(crate::stdio::Error::Backpressure);
+                                }
+                                bytes += size;
+                                notices.push(event);
+                                Ok(())
+                            })
+                            .map(Outcome::Reply)
+                            .map_err(Error::from)
+                    }
+                }
+                Connection::Http(client) => {
+                    let result = if method == "events/listen" {
+                        match client.listen(&context) {
+                            Ok(Some(event)) => {
+                                notices.push(event);
+                                Ok(Outcome::Events { supported: true })
+                            }
+                            Ok(None) => Ok(Outcome::Events { supported: false }),
+                            Err(e) => Err(e.into()),
+                        }
+                    } else {
+                        match client.call(&method, plan.params, &context) {
+                            Ok(Incoming::Reply { result, .. }) => Ok(Outcome::Reply(result)),
+                            Ok(_) => Err(Error::Configuration),
+                            Err(e) => Err(e.into()),
+                        }
+                    };
+                    while let Some(event) = client.pop_event() {
+                        notices.push(event);
+                    }
+                    result
+                }
             };
+            let observed = self.observe(&plan.server, notices);
+            if observed.is_err()
+                && let Some(connection) = self.connections.get_mut(&plan.server)
+            {
+                match connection {
+                    #[cfg(unix)]
+                    Connection::Stdio(client) => {
+                        client.close();
+                    }
+                    Connection::Http(client) => client.fence_generation(),
+                }
+            }
+            let result = result.and_then(|outcome| {
+                observed?;
+                Ok(outcome)
+            });
+            if result.is_err() {
+                self.invalidate_server(&plan.server);
+                self.revision += 1;
+            }
             if result.is_err()
                 && let Some(connection) = self.connections.get_mut(&plan.server)
             {
@@ -334,6 +423,13 @@ impl<'a> Manager<'a> {
     }
     /// Explicit cleanup, independent of an expired task/permission snapshot.
     pub fn close(&mut self, context: &TurnContext) -> Result<(), Error> {
+        self.catalogs.clear();
+        self.catalog_sizes.clear();
+        self.catalog_bytes = 0;
+        self.epochs.clear();
+        self.revision += 1;
+        self.notices.clear();
+        self.notice_bytes = 0;
         let mut error = None;
         for (_, connection) in std::mem::take(&mut self.connections) {
             match connection {
@@ -372,5 +468,285 @@ fn target(method: Option<&str>, params: Option<&Map<String, Value>>) -> Result<S
         Ok(format!("{method}:{name}"))
     } else {
         Ok(method.into())
+    }
+}
+
+impl Plan {
+    pub fn server(&self) -> &str {
+        &self.server
+    }
+    pub fn method(&self) -> Option<&str> {
+        self.method.as_deref()
+    }
+    pub fn params(&self) -> Option<&Map<String, Value>> {
+        self.params.as_ref()
+    }
+}
+fn notification_size(event: &Incoming) -> Result<usize, Error> {
+    if let Incoming::Notification { method, params } = event {
+        let message = Message::Notification {
+            method: method.clone(),
+            params: params.clone(),
+        };
+        Ok(crate::wire::encode(&message, &Limits::default())?.len())
+    } else {
+        Err(Error::Configuration)
+    }
+}
+impl Manager<'_> {
+    fn invalidate_catalog(&mut self, key: &(String, Kind)) {
+        self.catalogs.remove(key);
+        if let Some(size) = self.catalog_sizes.remove(key) {
+            self.catalog_bytes -= size;
+        }
+    }
+    fn invalidate_server(&mut self, server: &str) {
+        for kind in [Kind::Tools, Kind::Resources, Kind::Prompts, Kind::Templates] {
+            self.invalidate_catalog(&(server.into(), kind));
+        }
+    }
+    fn capabilities(&self, server: &str) -> Result<crate::types::ServerCapabilities, Error> {
+        let connection = self.connections.get(server).ok_or(Error::NotConnected)?;
+        let (phase, server) = match connection {
+            #[cfg(unix)]
+            Connection::Stdio(client) => (client.phase(), client.server()),
+            Connection::Http(client) => (client.phase(), client.server()),
+        };
+        if phase != crate::Phase::Ready {
+            return Err(Error::NotConnected);
+        }
+        Ok(server.ok_or(Error::NotConnected)?.capabilities.clone())
+    }
+    fn observe(&mut self, server: &str, events: Vec<Incoming>) -> Result<(), Error> {
+        // Capabilities can still be read on a transport fenced after receiving data.
+        let caps = self
+            .connections
+            .get(server)
+            .and_then(|connection| match connection {
+                #[cfg(unix)]
+                Connection::Stdio(client) => client.server(),
+                Connection::Http(client) => client.server(),
+            })
+            .map(|s| s.capabilities.clone())
+            .unwrap_or_default();
+        for event in events {
+            let size = notification_size(&event)?;
+            if self.notices.len() >= 64 || self.notice_bytes.saturating_add(size) > 2 * 1024 * 1024
+            {
+                return Err(crate::discovery::Error::Limit.into());
+            }
+            let Incoming::Notification { method, params } = event else {
+                return Err(Error::Configuration);
+            };
+            let kind = match method.as_str() {
+                "notifications/tools/list_changed"
+                    if caps
+                        .tools
+                        .as_ref()
+                        .is_some_and(|c| c.list_changed == Some(true)) =>
+                {
+                    Some(Kind::Tools)
+                }
+                "notifications/prompts/list_changed"
+                    if caps
+                        .prompts
+                        .as_ref()
+                        .is_some_and(|c| c.list_changed == Some(true)) =>
+                {
+                    Some(Kind::Prompts)
+                }
+                "notifications/resources/list_changed"
+                    if caps
+                        .resources
+                        .as_ref()
+                        .is_some_and(|c| c.list_changed == Some(true)) =>
+                {
+                    Some(Kind::Resources)
+                }
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                let kinds = if kind == Kind::Resources {
+                    vec![Kind::Resources, Kind::Templates]
+                } else {
+                    vec![kind]
+                };
+                for kind in kinds {
+                    self.invalidate_catalog(&(server.into(), kind));
+                    *self.epochs.entry((server.into(), kind)).or_default() += 1;
+                }
+            }
+            // Unknown/progress/resource-updated notifications remain bounded inert
+            // data. They never open a URI, execute a tool, or auto-refresh a list.
+            self.notice_bytes += size;
+            self.notices.push_back((
+                Notification {
+                    server: server.into(),
+                    method,
+                    params,
+                },
+                size,
+            ));
+        }
+        Ok(())
+    }
+    pub fn pop_notification(&mut self) -> Option<Notification> {
+        self.notices.pop_front().map(|(event, size)| {
+            self.notice_bytes -= size;
+            event
+        })
+    }
+    /// Explicit optional event pump, admitted independently from RPC methods.
+    /// Stdio waits for one notification; HTTP GET 405 returns supported=false.
+    pub fn prepare_notifications(&mut self, server: &str) -> Result<Plan, Error> {
+        self.prepare(server, Some("events/listen".into()), None)
+    }
+    pub fn catalog(&mut self, server: &str, kind: Kind) -> Result<Option<&Catalog>, Error> {
+        self.parent.remaining()?;
+        let _lock = self.registry.lock()?;
+        self.refresh()?;
+        Ok(self.catalogs.get(&(server.into(), kind)))
+    }
+    /// Every page needs its own grant. No implicit retry, startup or partial cache.
+    /// Approval callback is host code and must review Plan before approving it.
+    pub fn discover(
+        &mut self,
+        server: &str,
+        kind: Kind,
+        context: &TurnContext,
+        mut admit: impl FnMut(Plan) -> Result<Permit, Error>,
+    ) -> Result<Catalog, Error> {
+        self.parent.remaining()?;
+        context.remaining()?;
+        if !context.is_bounded_by(&self.parent) {
+            return Err(Error::Configuration);
+        }
+        {
+            let _lock = self.registry.lock()?;
+            self.refresh()?;
+        }
+        if !kind.supported(&self.capabilities(server)?) {
+            return Err(crate::Error::Capability.into());
+        }
+        let key = (server.to_owned(), kind);
+        self.invalidate_catalog(&key);
+        let epoch = *self.epochs.get(&key).unwrap_or(&0);
+        let fingerprint = self.resolved.fingerprint.clone();
+        let mut pager = Pager::new(kind);
+        loop {
+            context.remaining()?;
+            let params = pager.request_params()?;
+            let plan = self.prepare_call(server, kind.method(), params.clone())?;
+            let permit = admit(plan)?;
+            if permit.0.server != server
+                || permit.0.method.as_deref() != Some(kind.method())
+                || permit.0.params != params
+            {
+                return Err(Error::Stale);
+            }
+            let outcome = self.execute(permit, context)?;
+            if self.resolved.fingerprint != fingerprint
+                || *self.epochs.get(&key).unwrap_or(&0) != epoch
+            {
+                return Err(crate::discovery::Error::Stale.into());
+            }
+            let result = match outcome {
+                Outcome::Reply(Ok(result)) => result,
+                Outcome::Reply(Err(_)) => return Err(crate::discovery::Error::Rpc.into()),
+                _ => return Err(Error::Configuration),
+            };
+            if pager.push(result)? {
+                break;
+            }
+        }
+        // Local validation may consume time: recheck context/trust before publish.
+        context.remaining()?;
+        let _lock = self.registry.lock()?;
+        self.refresh()?;
+        if self.resolved.fingerprint != fingerprint || *self.epochs.get(&key).unwrap_or(&0) != epoch
+        {
+            return Err(crate::discovery::Error::Stale.into());
+        }
+        self.revision += 1;
+        let catalog = pager.finish(server.into(), self.revision)?;
+        let size = serde_json::to_vec(&catalog)
+            .map_err(|_| crate::discovery::Error::Payload)?
+            .len();
+        if self.catalog_bytes.saturating_add(size) > 8 * 1024 * 1024 {
+            return Err(crate::discovery::Error::Limit.into());
+        }
+        context.remaining()?;
+        self.catalog_bytes += size;
+        self.catalog_sizes.insert(key.clone(), size);
+        self.catalogs.insert(key, catalog.clone());
+        Ok(catalog)
+    }
+    /// Catalogs supply names, never permissions. This still returns an ordinary
+    /// one-operation plan. JSON Schema instance evaluation belongs to 3.6.
+    pub fn prepare_tool_call(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: Map<String, Value>,
+    ) -> Result<Plan, Error> {
+        self.prepare_catalog_call(server, Kind::Tools, name, Some(arguments))
+    }
+    pub fn prepare_resource_read(&mut self, server: &str, uri: &str) -> Result<Plan, Error> {
+        self.prepare_catalog_call(server, Kind::Resources, uri, None)
+    }
+    pub fn prepare_prompt_get(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: Map<String, Value>,
+    ) -> Result<Plan, Error> {
+        self.prepare_catalog_call(server, Kind::Prompts, name, Some(arguments))
+    }
+    fn prepare_catalog_call(
+        &mut self,
+        server: &str,
+        kind: Kind,
+        name: &str,
+        arguments: Option<Map<String, Value>>,
+    ) -> Result<Plan, Error> {
+        let (method, field) = match kind {
+            Kind::Tools => ("tools/call", "name"),
+            Kind::Resources => ("resources/read", "uri"),
+            Kind::Prompts => ("prompts/get", "name"),
+            Kind::Templates => return Err(Error::Configuration),
+        };
+        let mut params = Map::from_iter([(field.into(), Value::String(name.into()))]);
+        if let Some(arguments) = arguments {
+            params.insert("arguments".into(), Value::Object(arguments));
+        }
+        let mut plan = self.prepare_call(server, method, Some(params))?;
+        let catalog = self
+            .catalogs
+            .get(&(server.into(), kind))
+            .ok_or(crate::discovery::Error::Stale)?;
+        let item = catalog
+            .items
+            .iter()
+            .find(|item| item.identity() == name)
+            .ok_or(crate::discovery::Error::Stale)?;
+        if let crate::discovery::Item::Prompt(prompt) = item {
+            let arguments = plan
+                .params
+                .as_ref()
+                .and_then(|p| p.get("arguments"))
+                .and_then(Value::as_object)
+                .ok_or(Error::Configuration)?;
+            if arguments.iter().any(|(name, value)| {
+                !value.is_string() || !prompt.arguments.iter().any(|a| &a.name == name)
+            }) || prompt
+                .arguments
+                .iter()
+                .any(|a| a.required && !arguments.contains_key(&a.name))
+            {
+                return Err(crate::discovery::Error::Payload.into());
+            }
+        }
+        plan.catalog_revision = Some((kind, catalog.revision));
+        Ok(plan)
     }
 }

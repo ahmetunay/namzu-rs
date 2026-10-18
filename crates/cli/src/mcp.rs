@@ -3,6 +3,7 @@ use clap::{Args as ClapArgs, Subcommand};
 use namzu_core::{Cancellation, TurnContext};
 use namzu_mcp::{
     config::{Decision, Error, Policy, Project, Registry, read_document, read_server},
+    discovery::Kind,
     manager::{Manager, Outcome, Plan},
 };
 use serde_json::{Value, json};
@@ -70,6 +71,20 @@ enum Action {
     /// Trust exactly the current explicitly selected project config bytes.
     Trust,
     Untrust,
+    /// Fetch one complete bounded MCP catalog. Does not call tools/read resources.
+    Discover {
+        server: String,
+        #[arg(value_parser=["tools","resources","prompts","templates"])]
+        kind: String,
+        /// Approve connect and each page in this invocation, never overriding deny.
+        #[arg(long)]
+        approve: bool,
+        /// Include untrusted definitions/descriptions/URI/schema data in JSON output.
+        #[arg(long)]
+        details: bool,
+        #[arg(long,default_value_t=300,value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+    },
     /// Explicit initialize + ping, then close. No model/tool calls or downloads.
     Check {
         server: String,
@@ -117,6 +132,7 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
                 | Action::List
                 | Action::Show { .. }
                 | Action::Check { .. }
+                | Action::Discover { .. }
         )
     {
         return Err(Error::Configuration);
@@ -189,6 +205,39 @@ pub fn run(args: Args, cancellation: Cancellation) -> Result<Value, Error> {
         Action::Untrust => {
             registry.untrust(project.as_ref().ok_or(Error::Configuration)?)?;
             Ok(json!({"trusted":false}))
+        }
+        Action::Discover {
+            server,
+            kind,
+            approve,
+            details,
+            timeout,
+        } => {
+            let kind = match kind.as_str() {
+                "tools" => Kind::Tools,
+                "resources" => Kind::Resources,
+                "prompts" => Kind::Prompts,
+                "templates" => Kind::Templates,
+                _ => return Err(Error::Configuration),
+            };
+            let context = TurnContext::new(Duration::from_secs(timeout), cancellation)?;
+            let mut manager = Manager::new(&registry, args.profile, project, ceiling, &context)?;
+            let result = (|| {
+                let permission = admitted(manager.prepare_connect(&server)?, approve)?;
+                manager.execute(permission, &context)?;
+                manager.discover(&server, kind, &context, |plan| admitted(plan, approve))
+            })();
+            let cleanup = TurnContext::new(Duration::from_secs(5), Cancellation::default())?;
+            let closed = manager.close(&cleanup);
+            let catalog = result?;
+            closed?;
+            if details {
+                Ok(json!(catalog))
+            } else {
+                Ok(
+                    json!({"server":server,"kind":kind,"count":catalog.items.len(),"items":catalog.items.iter().map(|item|item.identity()).collect::<Vec<_>>(),"model_calls":0}),
+                )
+            }
         }
         Action::Check {
             server,

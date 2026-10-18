@@ -76,8 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.4 tamamlandı.
-  Protokol, Unix stdio, HTTP/SSE, profil yönetimi ve güven/izinler var.
+- TUI 1.1–1.4, Pals 2.1–2.6 ve MCP 3.1–3.5 tamamlandı.
+  Protokol, taşıma, profil/güven ve bounded katalog keşfi var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -285,8 +285,24 @@ namzu-rs mcp check SERVER --approve --timeout 300
 
 Örnek sunucular disabled ve yollar yer tutucudur; gerçek endpoint/program
 seçilmelidir. Model kotası kullanılmadı. [CLI/SDK, kabul ve sınırlar](docs/MCP-MANAGEMENT.md).
-Sıradaki parça **3.5 — Keşif ve sunucu sağlayıcıları**. Normal exec/TUI/Pal
-MCP araç entegrasyonu 3.6'dadır.
+
+## 3.5 — MCP keşif ve sunucu sağlayıcıları
+
+Tools/resources/prompts/templates için atomic katalog, opaque cursor sayfalama,
+isim/şema metadata sınırları, typed içerik ayrıştırma ve list_changed invalidation
+var. Her sayfa mevcut güven/izin kontrolünden geçer; eski katalog grant'ı yeniden
+kullanılamaz. 40 yeni test; toplam 335 Rust testi. Model çağrısı 0.
+
+```sh
+namzu-rs mcp discover SERVER tools --approve
+namzu-rs mcp discover SERVER resources --approve
+namzu-rs mcp discover SERVER prompts --approve
+namzu-rs mcp discover SERVER templates --approve
+```
+
+[SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
+kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
+Sıradaki parça **3.6 — SDK/CLI/TUI/Pals entegrasyonu**.
 
 ## Yerel checkpoint ve kurtarma
 

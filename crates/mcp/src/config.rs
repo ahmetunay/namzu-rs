@@ -40,6 +40,8 @@ pub enum Error {
     Stdio(#[from] crate::stdio::Error),
     #[error(transparent)]
     Http(#[from] crate::http::Error),
+    #[error(transparent)]
+    Discovery(#[from] crate::discovery::Error),
     #[error("MCP transport is unavailable on this platform")]
     Unsupported,
 }
