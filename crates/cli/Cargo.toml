@@ -10,6 +10,7 @@ name = "namzu-rs"
 path = "src/main.rs"
 
 [dependencies]
+namzu-capabilities.workspace = true
 namzu-sandbox.workspace = true
 namzu-core.workspace = true
 namzu-lsp.workspace = true

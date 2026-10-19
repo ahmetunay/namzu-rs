@@ -6,6 +6,9 @@ use namzu_session::PrivateStore;
 use std::path::Path;
 #[derive(Clone, Default, Args)]
 pub struct VisualSelection {
+    /// Explicit bounded JSON sandbox policy; requires a pinned guest image.
+    #[arg(long)]
+    pub sandbox_policy: Option<std::path::PathBuf>,
     #[arg(id = "computer_image", long = "computer-image")]
     pub image: Option<String>,
     #[arg(id = "computer_desktop", long = "computer-desktop")]
@@ -40,7 +43,7 @@ impl VisualSelection {
         match &self.image {
             Some(image) => Ok(Some(self.spec_for(image)?)),
             None => {
-                if self.desktop || self.browser {
+                if self.desktop || self.browser || self.sandbox_policy.is_some() {
                     return Err(AgentError::Configuration(
                         "--computer-image required for computer hardware flags",
                     ));
@@ -59,12 +62,30 @@ impl VisualSelection {
             spec.memory_bytes = 768 * 1024 * 1024;
             spec.pids = 128;
         }
+        self.apply_sandbox(spec)
+    }
+    pub fn apply_sandbox(&self, mut spec: ComputerSpec) -> Result<ComputerSpec, AgentError> {
+        if let Some(path) = &self.sandbox_policy {
+            use std::io::Read;
+            let file = std::fs::File::open(path)
+                .map_err(|_| AgentError::Configuration("cannot open selected sandbox policy"))?;
+            let mut bytes = vec![];
+            file.take(65537)
+                .read_to_end(&mut bytes)
+                .map_err(|_| AgentError::Configuration("cannot read selected sandbox policy"))?;
+            spec = spec.with_sandbox(namzu_sandbox::Policy::parse(&bytes)?)?;
+        }
         spec.validate()?;
         Ok(spec)
     }
     pub fn description(&self) -> String {
         format!(
-            "visual:{}{}{}{}{}{}",
+            "{} visual:{}{}{}{}{}{}",
+            if self.sandbox_policy.is_some() {
+                "sandbox policy selected"
+            } else {
+                ""
+            },
             if self.observe { " read" } else { "" },
             if self.input { " input" } else { "" },
             if self.navigate { " navigate" } else { "" },

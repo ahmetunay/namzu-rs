@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals", "crates/computer", "crates/mcp", "crates/audio", "crates/lsp", "crates/sandbox"]
+members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals", "crates/computer", "crates/mcp", "crates/audio", "crates/lsp", "crates/sandbox", "crates/capabilities"]
 resolver = "2"
 
 [workspace.package]
@@ -25,3 +25,4 @@ namzu-mcp = { path = "crates/mcp" }
 namzu-audio = { path = "crates/audio" }
 namzu-lsp = { path = "crates/lsp" }
 namzu-sandbox = { path = "crates/sandbox" }
+namzu-capabilities = { path = "crates/capabilities" }

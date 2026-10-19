@@ -63,7 +63,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
-| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.4 tamam; 5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
+| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
@@ -189,7 +189,11 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   RO/RW owned Docker workspace, offline ağ, fsize/nofile/tmpfs ve RAM/CPU/PID
   sınırları; açık CLI, timeout/output fence ve recovery. Native/remote/visual
   policy backend'leri desteklenmez; host fallback yok. [Kabul ve sınırlar](docs/SANDBOX.md).
-- **5.5** — Yetenek kaydı, config/izin ve terminal entegrasyonu.
+- **5.5 — tamam** — Bağımsız capability SDK/katalog, typed config, opt-in ses/LSP
+  model araçları, normal/Pal TUI çağrı onayı ve profile/session kimliği. Sandbox
+  exec/Pal devamı, owned cleanup ve host fallback reddi. 13 yeni Rust testi;
+  toplam 516, fmt/Clippy/release. 15 CLI/PTY/Docker kabul grubu ve 25 mevcut
+  TUI regresyon kontrolü. [Kullanım ve sınırlar](docs/CAPABILITIES.md).
 
 Kabul: dosya/format sınırları, gerçek yerel LSP fixture'ı, izinsiz erişimin reddi.
 Yerel testler için ücretli ses hizmeti zorunlu değildir.
@@ -232,7 +236,12 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 5.5 — yetenek kaydı, config/izin ve terminal entegrasyonu.**
+**Sıradaki iş: 6.1 — ortak model sağlayıcı sürücü sözleşmesi.**
+5.5 tamamlandı: seçilen paketlerin SDK/exec/TUI/Pal araçları, config/CLI/profil
+izin kesişimi, canonical route pin ve sandbox workspace devamı. Native sandbox,
+guest üzerinde ses/LSP ve büyük ek protokolü bu teslimde uygulanmadı;
+[mevcut kapsam ve kabul](docs/CAPABILITIES.md). Canlı model çağrısı 0.
+
 5.4 tamamlandı: ayrı politika SDK ve açık sandbox CLI, gerçek Docker sınır
 kontrolleri, policy kimliğine bağlı owned resource doğrulaması ve belirsiz işte
 stop/retain/no replay. 503 Rust testi; 14 Docker SDK + 8 CLI kabul grubu ve

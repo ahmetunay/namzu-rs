@@ -21,6 +21,8 @@ pub struct ExecArgs {
 #[derive(Args, Clone)]
 pub struct RunOptions {
     #[command(flatten)]
+    pub capabilities: crate::capability_runtime::Selection,
+    #[command(flatten)]
     pub computer: crate::computer_runtime::VisualSelection,
     #[arg(long, default_value = ".")]
     pub cwd: PathBuf,
@@ -92,7 +94,7 @@ pub fn execute_observed(
         let state_dir = args.state_dir.clone().unwrap_or(default_state_dir()?);
         let store = PrivateStore::open(&state_dir)?;
         let mut config = config_for(&args, &store)?;
-        let mut provider = driver_for(&args, &config)?;
+
         let cwd = args
             .cwd
             .canonicalize()
@@ -109,6 +111,9 @@ pub fn execute_observed(
                 "normal exec visual tools require --computer-image; no host fallback",
             ));
         }
+        let capabilities_identity =
+            crate::capability_runtime::identity(&args, &config, computer_spec.is_some())?;
+        let mut provider = driver_for(&args, &config)?;
         let provider_route = provider.route(&config, &context)?;
         let mcp_identity = crate::mcp_runtime::identity(&state_dir, &args.mcp, &context)?;
         let route = if let Some(spec) = &computer_spec {
@@ -117,6 +122,17 @@ pub fn execute_observed(
             provider_route
         } else {
             serde_json::json!({"provider_route":serde_json::from_str::<serde_json::Value>(&provider_route).map_err(|_|AgentError::Protocol("invalid route"))?,"mcp":mcp_identity}).to_string()
+        };
+        let route = if capabilities_identity.is_null() {
+            route
+        } else {
+            let mut value: serde_json::Value =
+                serde_json::from_str(&route).map_err(|_| AgentError::Protocol("invalid route"))?;
+            if value.get("provider_route").is_none() {
+                value = serde_json::json!({"provider_route":value});
+            }
+            value["capabilities"] = capabilities_identity;
+            value.to_string()
         };
         let id = args.resume.clone().unwrap_or_else(new_id);
         let _lock = store.lock(&id)?;
@@ -147,7 +163,28 @@ pub fn execute_observed(
             None
         };
         let mut shared = if let (Some(manager), Some(spec)) = (&manager, computer_spec) {
-            let computer = manager.acquire(spec, &context)?;
+            let mut computer = if spec.sandbox.is_some()
+                && manager
+                    .snapshot()?
+                    .is_some_and(|r| r.phase != namzu_computer::Phase::Closed)
+            {
+                let mut c = manager.resume(&context)?;
+                c.preserve_workspace_on_drop();
+                if c.snapshot().spec != spec || c.snapshot().pending.is_some() {
+                    return Err(AgentError::State(
+                        "sandbox changed or uncertain; inspect explicitly",
+                    ));
+                }
+                if c.snapshot().phase == namzu_computer::Phase::Stopped {
+                    c.start(&context)?;
+                }
+                c
+            } else {
+                manager.acquire(spec, &context)?
+            };
+            if computer.snapshot().spec.sandbox.is_some() {
+                computer.preserve_workspace_on_drop();
+            }
             Some(namzu_computer::SharedGuestTools::new(
                 namzu_computer::GuestTools::new(computer, tool_policy.clone())
                     .with_visual(args.computer.policy()),
@@ -160,14 +197,21 @@ pub fn execute_observed(
         session.status = SessionStatus::Running;
         session.save(&store)?;
         let turn = (|| {
-            let mut tools: Box<dyn namzu_core::Tools + '_> = if let Some(shared) = &shared {
+            let tools: Box<dyn namzu_core::Tools + '_> = if let Some(shared) = &shared {
                 Box::new(shared.clone())
             } else {
                 Box::new(
-                    TerminalTools::new(&cwd, tool_policy)
+                    TerminalTools::new(&cwd, tool_policy.clone())
                         .map_err(|_| AgentError::Configuration("cannot open workspace tools"))?,
                 )
             };
+            let mut tools = crate::capability_runtime::tools(
+                tools,
+                &cwd,
+                &args.capabilities,
+                &config.capabilities,
+                tool_policy.clone(),
+            )?;
             let mut observer = PresentationObserver {
                 journal: Journal {
                     store: &store,
@@ -241,7 +285,9 @@ pub fn execute_observed(
             let cleaned = (|| {
                 shared.finish_mcp(turn.is_ok(), &cleanup)?;
                 let mut computer = shared.into_computer()?;
-                if computer.snapshot().pending.is_some() {
+                if computer.snapshot().pending.is_some()
+                    || computer.snapshot().spec.sandbox.is_some()
+                {
                     computer.detach(&cleanup)?;
                 } else {
                     computer.close(&cleanup)?;
@@ -409,5 +455,12 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
         c.max_text_bytes = v;
     }
     c.validate()?;
+    let names = args.capabilities.names()?;
+    c.capabilities.identity(&names)?;
+    if args.computer.sandbox_policy.is_some() && !c.capabilities.permits("sandbox") {
+        return Err(AgentError::Configuration(
+            "sandbox capability denied by config",
+        ));
+    }
     Ok(c)
 }

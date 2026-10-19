@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "model": "SELECT_A_MODEL",
+  "capabilities": {
+    "allow": null,
+    "deny": [],
+    "audio": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "transcription_model": "SELECT_TRANSCRIPTION_MODEL",
+      "speech_model": "SELECT_SPEECH_MODEL"
+    },
+    "lsp": {
+      "program": "/ABSOLUTE/PATH/TO/LSP_SERVER",
+      "args": [],
+      "env": []
+    }
+  }
+}

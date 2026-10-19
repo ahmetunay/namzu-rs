@@ -45,7 +45,8 @@ namzu-rs lsp --root ./project --program /absolute/path/rust-analyzer \
 
 Argümanlar/env değerleri loglanmaz; stderr payload'ı hata çıktısına eklenmez.
 Bu çağrılar executable'a host yetkisi verdiği için modele otomatik tool olarak
-sunulmaz; capability/TUI/Pal izin bağlantıları 5.5'e bırakılır.
+sunulmaz; 5.5 ile açık `--capability lsp --allow-lsp` seçimi kullanılabilir.
+[Ajan/TUI/Pal izinleri ve plan apply](CAPABILITIES.md).
 
 ## Önizleme ve düzenleme
 

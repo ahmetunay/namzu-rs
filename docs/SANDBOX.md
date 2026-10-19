@@ -3,7 +3,8 @@
 `namzu-sandbox` bağımsız politika SDK'sıdır. `namzu-computer` politikayı owned
 **yerel Linux Docker** container'ına uygular. Model/hesap çağrısı yoktur.
 Normal `exec --allow-shell` hâlâ host shell'dir; bu yeni politikayı otomatik
-kullanmaz. Genel exec/TUI/Pal yetenek/config entegrasyonu **5.5** kapsamındadır.
+kullanmaz. Genel exec/TUI/Pal yetenek/config entegrasyonu **5.5** ile hazırdır;
+[açık seçim, devam ve temizlik](CAPABILITIES.md).
 
 ## Açık CLI
 

@@ -1,5 +1,6 @@
 mod audio;
 mod benchmark;
+mod capability_runtime;
 mod computer_runtime;
 mod config;
 mod execute;
@@ -24,6 +25,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect selected capability/tool permissions offline or manage a retained exec computer.
+    Capabilities(Box<capability_runtime::CapabilityArgs>),
     /// Explicit owned Docker sandbox policies and bounded offline operations.
     Sandbox(Box<sandbox::SandboxArgs>),
     /// Explicit trusted LSP server and hash-bound document edits.
@@ -308,6 +311,24 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Capabilities(args) => {
+            return match capability_runtime::inspect(*args, cancellation) {
+                Ok(value) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"ok","output":value})
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Sandbox(args) => {
             return match sandbox::run(*args, cancellation) {
                 Ok(value) => {

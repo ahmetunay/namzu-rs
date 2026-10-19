@@ -218,6 +218,10 @@ struct Profile {
     identity: String,
     guest: bool,
     #[serde(default)]
+    capabilities: serde_json::Value,
+    #[serde(default)]
+    sandbox: Option<ComputerSpec>,
+    #[serde(default)]
     mcp: serde_json::Value,
 }
 impl PalOptions {
@@ -277,8 +281,24 @@ impl PalOptions {
                 "visual Pal ceiling requires --guest or explicit computer image",
             ));
         }
+        let guest = self.guest || self.image.is_some() || self.run.computer.image.is_some();
+        let capabilities = crate::capability_runtime::identity(&self.run, &c, guest)?;
+        let sandbox = if self.run.computer.sandbox_policy.is_some() {
+            let image = self
+                .image
+                .as_ref()
+                .or(self.run.computer.image.as_ref())
+                .ok_or(AgentError::Configuration(
+                    "sandbox Pal creation requires an explicit pinned image",
+                ))?;
+            Some(self.run.computer.spec_for(image)?)
+        } else {
+            None
+        };
         Ok(Profile {
             version: 1,
+            capabilities,
+            sandbox,
             provider: c.provider.clone(),
             model: c
                 .model
@@ -351,6 +371,29 @@ impl PalOptions {
         };
         o.effort = p.effort.clone();
         let c = config_for(&o, &self.store()?)?;
+        let identity = crate::capability_runtime::identity(&self.run, &c, p.guest)?;
+        if identity != p.capabilities {
+            return Err(AgentError::Configuration(
+                "Pal capability selection/config changed; create a new profile explicitly",
+            ));
+        }
+        let sandbox = if self.run.computer.sandbox_policy.is_some() {
+            let image = self
+                .image
+                .as_ref()
+                .or(self.run.computer.image.as_ref())
+                .ok_or(AgentError::Configuration(
+                    "sandbox Pal execution requires the pinned image again",
+                ))?;
+            Some(self.run.computer.spec_for(image)?)
+        } else {
+            None
+        };
+        if sandbox != p.sandbox {
+            return Err(AgentError::Configuration(
+                "Pal sandbox policy/image changed or omitted",
+            ));
+        }
         let driver = driver_for(&o, &c)?;
         if driver.route(&c, ctx)? != p.identity {
             return Err(AgentError::State(
@@ -451,8 +494,15 @@ fn execute_run(
     let (mut driver, c, profile) = o.runtime(&pal, ctx)?;
     let tool_policy = policy(&o.run, &c);
     if !profile.guest {
-        let mut tools = TerminalTools::new(&pal.workspace, tool_policy.clone())
+        let local = TerminalTools::new(&pal.workspace, tool_policy.clone())
             .map_err(|_| AgentError::State("cannot open Pal tools"))?;
+        let mut tools = crate::capability_runtime::tools(
+            local,
+            &pal.workspace,
+            &o.run.capabilities,
+            &c.capabilities,
+            tool_policy.clone(),
+        )?;
         let selection = o.mcp_selection(&profile, ctx)?;
         if selection.servers.is_empty() || !pal.tools.iter().any(|s| s.starts_with("mcp_")) {
             return run.execute(&mut driver, &mut tools, ctx, limits, observer);
@@ -504,12 +554,33 @@ fn execute_run(
     let manager = o.manager(registry, &pal.id)?;
     let ephemeral = o.image.as_ref().or(o.run.computer.image.as_ref());
     let mut computer = if let Some(image) = ephemeral {
-        manager.acquire(o.run.computer.spec_for(image)?, ctx)?
+        let spec = o.run.computer.spec_for(image)?;
+        if spec.sandbox.is_some()
+            && manager
+                .snapshot()?
+                .is_some_and(|r| r.phase != namzu_computer::Phase::Closed)
+        {
+            let mut computer = manager.resume(ctx)?;
+            computer.preserve_workspace_on_drop();
+            if computer.snapshot().spec != spec {
+                return Err(AgentError::State("Pal computer sandbox policy changed"));
+            }
+            computer
+        } else {
+            manager.acquire(spec, ctx)?
+        }
     } else {
         manager.resume(ctx)?
     };
-    if ephemeral.is_none() {
+    if ephemeral.is_none() || computer.snapshot().spec.sandbox.is_some() {
         computer.preserve_workspace_on_drop();
+    }
+    if computer.snapshot().spec.sandbox.is_some()
+        && profile.sandbox.as_ref() != Some(&computer.snapshot().spec)
+    {
+        return Err(AgentError::State(
+            "Pal computer sandbox differs from pinned profile",
+        ));
     }
     // Pending guest work needs explicit host inspection; never acknowledge on behalf of a model.
     if computer.snapshot().pending.is_some() {
@@ -519,8 +590,20 @@ fn execute_run(
     }
     start_if_stopped(&mut computer, ctx)?;
     let selection = o.mcp_selection(&profile, ctx)?;
-    let mut tools =
-        GuestTools::new(computer, tool_policy.clone()).with_visual(o.run.computer.policy());
+    let mut guest_policy = tool_policy.clone();
+    if !c.capabilities.permits("files") {
+        guest_policy.deny.extend(
+            ["read_file", "list_files", "write_file", "shell"]
+                .into_iter()
+                .map(String::from),
+        );
+        guest_policy.deny.extend(
+            namzu_computer::VISUAL_NAMES
+                .iter()
+                .map(|s| (*s).to_string()),
+        );
+    }
+    let mut tools = GuestTools::new(computer, guest_policy).with_visual(o.run.computer.policy());
     if !selection.servers.is_empty() && pal.tools.iter().any(|s| s.starts_with("mcp_")) {
         #[cfg(not(unix))]
         return Err(AgentError::Configuration("guest MCP requires Unix"));
@@ -566,7 +649,10 @@ fn execute_run(
             drop(agent);
             shared.finish_mcp(result.is_ok() && closed.is_ok(), &cleanup)?;
             let mut computer = shared.into_computer()?;
-            if ephemeral.is_none() || computer.snapshot().pending.is_some() {
+            if ephemeral.is_none()
+                || computer.snapshot().pending.is_some()
+                || computer.snapshot().spec.sandbox.is_some()
+            {
                 computer.detach(&cleanup)?;
             } else {
                 computer.close(&cleanup)?;
@@ -583,7 +669,10 @@ fn execute_run(
     let result = run.execute(&mut driver, &mut tools, ctx, limits, observer);
     let cleanup = TurnContext::new(Duration::from_secs(20), Cancellation::default())?;
     let mut computer = tools.into_computer();
-    if ephemeral.is_none() || computer.snapshot().pending.is_some() {
+    if ephemeral.is_none()
+        || computer.snapshot().pending.is_some()
+        || computer.snapshot().spec.sandbox.is_some()
+    {
         // Preserve persistent/uncertain work, but stop it even after parent cancellation.
         if result.is_ok()
             && computer.snapshot().pending.is_none()
@@ -704,23 +793,42 @@ pub fn run(args: PalArgs, cancellation: Cancellation) -> Result<bool, AgentError
                 ["read_file", "list_files", "write_file", "shell"]
                     .into_iter()
                     .filter(|n| {
-                        !policy.deny.contains(*n)
+                        c.capabilities.permits("files")
+                            && !policy.deny.contains(*n)
                             && policy.allow.as_ref().is_none_or(|a| a.contains(*n))
                             && match *n {
-                                "write_file" => policy.allow_write,
-                                "shell" => policy.allow_shell,
+                                "write_file" => {
+                                    policy.allow_write
+                                        && p.sandbox
+                                            .as_ref()
+                                            .and_then(|s| s.sandbox.as_ref())
+                                            .is_none_or(|p| p.writable())
+                                }
+                                "shell" => {
+                                    policy.allow_shell
+                                        && p.sandbox
+                                            .as_ref()
+                                            .and_then(|s| s.sandbox.as_ref())
+                                            .is_none_or(|p| p.commands())
+                                }
                                 _ => true,
                             }
                     })
                     .map(String::from)
                     .collect()
             } else {
-                TerminalTools::new(o.state()?, policy.clone())
-                    .map_err(|_| AgentError::State("cannot open tool catalogue"))?
-                    .definitions()
-                    .into_iter()
-                    .map(|t| t.name)
-                    .collect()
+                crate::capability_runtime::tools(
+                    TerminalTools::new(o.state()?, policy.clone())
+                        .map_err(|_| AgentError::State("cannot open tool catalogue"))?,
+                    &o.state()?,
+                    &o.run.capabilities,
+                    &c.capabilities,
+                    policy.clone(),
+                )?
+                .definitions()
+                .into_iter()
+                .map(|t| t.name)
+                .collect()
             };
             if p.guest {
                 let v = o.run.computer.policy();
@@ -1102,6 +1210,7 @@ fn computer(
                     height: height.unwrap_or(768),
                 });
             }
+            let spec = o.run.computer.apply_sandbox(spec)?;
             return Ok(json!(manager.acquire(spec, ctx)?.detach(ctx)?));
         }
         _ => (),

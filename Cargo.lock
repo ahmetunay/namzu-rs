@@ -1260,6 +1260,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "namzu-capabilities"
+version = "0.1.0"
+dependencies = [
+ "namzu-audio",
+ "namzu-core",
+ "namzu-lsp",
+ "namzu-tools",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "namzu-cli"
 version = "0.1.0"
 dependencies = [
@@ -1269,6 +1284,7 @@ dependencies = [
  "libc",
  "namzu-audio",
  "namzu-bench",
+ "namzu-capabilities",
  "namzu-computer",
  "namzu-core",
  "namzu-lsp",

@@ -53,7 +53,13 @@ pub fn run(args: TuiArgs, cancellation: Cancellation) -> std::io::Result<()> {
                 } else {
                     ""
                 },
-                args.options.computer.description()
+                format_args!(
+                    "{} · packages={:?} audio={} lsp={}",
+                    args.options.computer.description(),
+                    args.options.capabilities.packages,
+                    args.options.capabilities.allow_audio,
+                    args.options.capabilities.allow_lsp
+                )
             )
         },
         session_id: args.options.resume.clone(),
@@ -107,6 +113,11 @@ impl AgentHost {
             if current.ok().as_ref() != route.get("mcp") {
                 return false;
             }
+        }
+        let current =
+            crate::capability_runtime::identity(options, c, options.computer.image.is_some());
+        if current.ok().as_ref().filter(|v| !v.is_null()) != route.get("capabilities") {
+            return false;
         }
         if check_computer_route(options, &route).is_err() {
             return false;
@@ -367,6 +378,40 @@ mod tests {
             ),
             demo: false,
         }
+    }
+    #[test]
+    fn capability_history_requires_same_selected_settings_but_never_restores_grants() {
+        let root = tempfile::tempdir().unwrap();
+        let host = host(root.path());
+        let mut options = host.options().unwrap();
+        options.capabilities.packages = vec!["audio".into()];
+        let mut config = crate::config::Config {
+            provider: "codex".into(),
+            model: Some("fixture".into()),
+            ..Default::default()
+        };
+        let cap = crate::capability_runtime::identity(&options, &config, false).unwrap();
+        let route = json!({"provider_route":{"provider":"codex","model":"fixture","endpoint":"https://chatgpt.com/backend-api/codex/"},"capabilities":cap});
+        let mut session = Session::new(
+            namzu_session::new_id(),
+            root.path().canonicalize().unwrap(),
+            route.to_string(),
+        )
+        .unwrap();
+        session.status = SessionStatus::Complete;
+        assert!(AgentHost::compatible(&session, &options, &config));
+        options.capabilities.allow_audio = true;
+        assert!(AgentHost::compatible(&session, &options, &config));
+        options.capabilities.packages.clear();
+        assert!(!AgentHost::compatible(&session, &options, &config));
+        options.capabilities.packages = vec!["audio".into()];
+        config.capabilities.audio = Some(namzu_capabilities::AudioConfig {
+            base_url: "https://example.invalid/v1".into(),
+            api_key_env: "FIXTURE".into(),
+            transcription_model: "a".into(),
+            speech_model: "b".into(),
+        });
+        assert!(!AgentHost::compatible(&session, &options, &config));
     }
     #[test]
     fn settings_use_effective_config_and_apply_atomically_without_changing_permissions() {

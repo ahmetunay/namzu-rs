@@ -268,10 +268,15 @@ pub(crate) fn approval(frame: &mut Frame<'_>, call: &namzu_core::ToolCall, scrol
     let text = format!(
         "Allow once? [y] yes / [n] deny\nEsc exits · Ctrl-C cancels · PgUp/PgDn details\n{}{}\n{}",
         visible(&call.name, 128),
-        if call.name == "shell" {
-            " · HOST filesystem/network access"
-        } else {
-            " · changes files"
+        match call.name.as_str() {
+            "shell" => " · shell execution in selected host/guest backend",
+            "audio_transcribe" | "audio_synthesize" =>
+                " · sends audio/text to configured speech service",
+            "audio_inspect" => " · inspect workspace audio locally",
+            "lsp_apply" => " · apply hash-bound workspace edit",
+            name if name.starts_with("lsp_") => " · run configured HOST LSP executable",
+            name if name.starts_with("mcp_") => " · call selected MCP server",
+            _ => " · workspace/computer operation",
         },
         visible(&call.arguments.to_string(), 64 * 1024)
     );

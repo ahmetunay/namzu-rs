@@ -270,3 +270,31 @@ fn typed_screenshot_restores_color_preview_and_clears_on_new_conversation() {
     app.new_conversation();
     assert!(app.preview.is_none() && !app.show_image);
 }
+
+#[test]
+fn speech_and_lsp_calls_require_per_call_terminal_approval() {
+    for name in [
+        "audio_transcribe",
+        "audio_synthesize",
+        "lsp_diagnostics",
+        "lsp_apply",
+    ] {
+        let (sender, receiver) = mpsc::sync_channel(64);
+        let worker = thread::spawn(move || {
+            ChannelEvents(sender).approve(
+                &ToolCall {
+                    id: "capability".into(),
+                    name: name.into(),
+                    arguments: Default::default(),
+                },
+                &TurnContext::new(Duration::from_secs(30), Cancellation::default()).unwrap(),
+            )
+        });
+        let UiMessage::Permission(request) = receiver.recv().unwrap() else {
+            panic!("missing capability approval");
+        };
+        assert_eq!(request.call.name, name);
+        request.reply.send(false).unwrap();
+        assert!(!worker.join().unwrap().unwrap());
+    }
+}

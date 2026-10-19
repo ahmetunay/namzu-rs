@@ -80,7 +80,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
-  tamamlandı. Gelişmiş dosya/ek 5.1, ses SDK/sürücüleri 5.2, LSP 5.3 ve Docker sandbox 5.4 tamam; sırada yetenek entegrasyonu 5.5 var.
+  tamamlandı. Gelişmiş dosya/ek 5.1, ses 5.2, LSP 5.3, Docker sandbox 5.4 ve
+  capability/config/exec/TUI/Pal entegrasyonu 5.5 tamam. Sırada sağlayıcılar 6 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -423,4 +424,13 @@ model kullanmaz; sunucu host programıdır, sandbox değildir.
 `sandbox policy/check/run/read/list/show/read-retained/cleanup` komutları var.
 Owned Docker üzerinde dosya/süreç/ağ sınırları uygulanır; native backend açıkça
 reddedilir, host fallback yoktur. Normal exec/TUI/Pal capability entegrasyonu
-5.5'tedir. [Kullanım, kabul ve sınırlar](docs/SANDBOX.md).
+5.5 ile hazırdır. [Kullanım, kabul ve sınırlar](docs/SANDBOX.md).
+
+## Yetenek kaydı ve izinler
+
+5.5: `namzu-capabilities` SDK ve `capabilities list` araç/izin kataloğu var.
+`--capability audio,lsp`, `--allow-audio`, `--allow-lsp` ve gereken yerde
+`--allow-write` açıkça seçilir; config kendiliğinden servis/program açmaz.
+Exec, normal/Pal TUI ve Pal görevlerinde aynı izin ve pinned route kuralları
+uygulanır. `--computer-image` + `--sandbox-policy` seçilirse dosya/shell guest'te
+kalır ve sandbox workspace'i turn'ler arasında korunur. [Kullanım ve kabul](docs/CAPABILITIES.md).

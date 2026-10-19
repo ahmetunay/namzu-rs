@@ -144,5 +144,6 @@ kalıcılığı garanti edilmez. Çıktının varlığı mümkün olduğunca ser
 
 Mikrofon kaydı, hoparlörden playback, gerçek zamanlı ses akışı ve codec dönüşümü
 yoktur. TUI/Pal ajan araçlarına otomatik dosya gönderme izni eklenmez; ses
-capability/config/izin bağlantıları 5.5'e, masaüstü ses UI'ı 8'e bırakılır.
+capability/config/izin bağlantıları 5.5 ile hazırdır
+([açık seçim ve izinler](CAPABILITIES.md)); masaüstü ses UI'ı 8'e bırakılır.
 5.2'nin teslimi WAV SDK/sürücü/olaylar ve açık CLI'dir.

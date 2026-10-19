@@ -9,5 +9,11 @@
   "max_tool_calls": 128,
   "tool_allow": null,
   "tool_deny": [],
-  "max_text_bytes": 4194304
+  "max_text_bytes": 4194304,
+  "capabilities": {
+    "allow": null,
+    "deny": [],
+    "audio": null,
+    "lsp": null
+  }
 }

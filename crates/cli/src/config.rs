@@ -7,6 +7,7 @@ use std::{collections::BTreeSet, io::Read, path::Path};
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub version: u32,
+    pub capabilities: namzu_capabilities::Config,
     pub provider: String,
     pub model: Option<String>,
     pub base_url: String,
@@ -22,6 +23,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             version: 1,
+            capabilities: Default::default(),
             provider: "openai-compatible".into(),
             model: None,
             base_url: "https://api.openai.com/v1".into(),
@@ -37,6 +39,7 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<(), AgentError> {
+        self.capabilities.validate()?;
         if self.version != 1
             || !(1..=86400).contains(&self.timeout)
             || self.max_steps == 0

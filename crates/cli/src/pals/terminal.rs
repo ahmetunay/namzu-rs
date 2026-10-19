@@ -24,7 +24,13 @@ pub(super) fn run(
                 } else {
                     ""
                 },
-                options.run.computer.description()
+                format_args!(
+                    "{} · packages={:?} audio={} lsp={}",
+                    options.run.computer.description(),
+                    options.run.capabilities.packages,
+                    options.run.capabilities.allow_audio,
+                    options.run.capabilities.allow_lsp
+                )
             ),
             session_id: None,
         },
@@ -240,6 +246,8 @@ mod tests {
                     effort: None,
                     identity: "fixture".into(),
                     guest: false,
+                    capabilities: Value::Null,
+                    sandbox: None,
                     mcp: Value::Null,
                 })
                 .unwrap(),
