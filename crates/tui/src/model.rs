@@ -209,6 +209,7 @@ impl App {
                 self.draft.clear();
                 self.status = format!("Model · step {step}");
             }
+            Event::ProviderFinished { .. } => {}
             Event::AssistantDelta { text } => {
                 self.draft.push_str(&visible(
                     &text,

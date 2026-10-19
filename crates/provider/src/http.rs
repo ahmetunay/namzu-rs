@@ -43,7 +43,7 @@ fn error(error: reqwest::Error) -> AgentError {
     if error.is_timeout() {
         AgentError::Timeout
     } else {
-        AgentError::Provider("HTTP request failed".into())
+        AgentError::Remote(namzu_core::ProviderFailure::transport())
     }
 }
 async fn wait<T>(
@@ -101,6 +101,12 @@ pub(crate) struct Response {
     offset: usize,
 }
 impl Response {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.response
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+    }
     pub fn status(&self) -> StatusCode {
         self.response.status()
     }
@@ -134,7 +140,7 @@ pub(crate) fn read_error(context: &TurnContext) -> AgentError {
     context
         .remaining()
         .err()
-        .unwrap_or(AgentError::Provider("cannot read HTTP response".into()))
+        .unwrap_or(AgentError::Remote(namzu_core::ProviderFailure::transport()))
 }
 
 #[cfg(test)]

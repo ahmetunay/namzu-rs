@@ -1,6 +1,7 @@
 //! Explicit OpenAI-compatible Chat Completions adapter. No automatic login,
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
 pub mod codex;
+mod contract;
 mod http;
 pub mod speech;
 use http::Client;
@@ -22,9 +23,16 @@ pub struct OpenAiCompatible {
     endpoint: Url,
     authorization: HeaderValue,
     model: String,
+    metadata: Option<namzu_core::ResponseMetadata>,
+    pricing: Option<namzu_core::provider::Pricing>,
 }
 
 impl OpenAiCompatible {
+    /// Explicit caller-supplied prices, never discovered or assumed current.
+    pub fn with_pricing(mut self, pricing: namzu_core::provider::Pricing) -> Self {
+        self.pricing = Some(pricing);
+        self
+    }
     pub fn new(base_url: &str, model: String, api_key: &str) -> Result<Self, AgentError> {
         if model.trim().is_empty() || model.len() > 256 || api_key.is_empty() {
             return Err(AgentError::Configuration("model and API key required"));
@@ -65,6 +73,8 @@ impl OpenAiCompatible {
             endpoint,
             authorization,
             model,
+            metadata: None,
+            pricing: None,
         })
     }
 }
@@ -153,16 +163,38 @@ pub fn decode_completion(value: &Value) -> Result<Completion, AgentError> {
             "finish reason does not match tool calls",
         ));
     }
-    Ok(Completion { text, tool_calls })
+    let completion = Completion { text, tool_calls };
+    namzu_core::provider::validate_completion(&completion)?;
+    Ok(completion)
 }
 
 impl Provider for OpenAiCompatible {
+    fn info(&self) -> namzu_core::ProviderInfo {
+        use namzu_core::provider::{ProviderCapabilities, ProviderInfo, Streaming, Support};
+        ProviderInfo {
+            contract_version: 1,
+            provider: "openai-compatible".into(),
+            model: Some(self.model.clone()),
+            capabilities: ProviderCapabilities {
+                tools: Support::Supported,
+                images: Support::Supported,
+                replay: Support::Unsupported,
+                usage: Support::Supported,
+                streaming: Streaming::Buffered,
+            },
+        }
+    }
+    fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
+        self.metadata.take()
+    }
     fn complete(
         &mut self,
         messages: &[Message],
         tools: &[ToolDefinition],
         context: &TurnContext,
     ) -> Result<Completion, AgentError> {
+        self.metadata = None;
+        namzu_core::provider::validate_request(messages, tools, &self.info(), context)?;
         let mut body =
             json!({"model":self.model,"messages":encode_messages(messages),"stream":false});
         if !tools.is_empty() {
@@ -178,10 +210,7 @@ impl Provider for OpenAiCompatible {
         )?;
         context.remaining()?;
         if !response.status().is_success() {
-            return Err(AgentError::Provider(format!(
-                "HTTP status {}",
-                response.status().as_u16()
-            )));
+            return Err(contract::status(&response));
         }
         let mut bytes = vec![];
         response
@@ -194,6 +223,13 @@ impl Provider for OpenAiCompatible {
         }
         let value: Value = serde_json::from_slice(&bytes)
             .map_err(|_| AgentError::Protocol("invalid completion JSON"))?;
-        decode_completion(&value)
+        let completion = decode_completion(&value)?;
+        namzu_core::provider::validate_completion(&completion)?;
+        let mut metadata = contract::metadata(&value, false)?;
+        if let (Some(pricing), Some(usage)) = (&self.pricing, &metadata.usage) {
+            metadata.cost = pricing.estimate(usage)?;
+        }
+        self.metadata = Some(metadata);
+        Ok(completion)
     }
 }

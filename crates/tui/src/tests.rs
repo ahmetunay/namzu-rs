@@ -83,6 +83,7 @@ fn accepted_text_replaces_draft_and_tool_preview_cannot_inject_terminal_controls
     });
     app.event(Event::TurnCompleted {
         stats: Stats {
+            usage: Default::default(),
             provider_calls: 2,
             tool_calls: 1,
         },

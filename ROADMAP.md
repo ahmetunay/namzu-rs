@@ -64,7 +64,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
-| 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
+| 6 | Diğer model sağlayıcıları | 6.1 tamam; 6.2–6.5 sırada | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
@@ -200,7 +200,12 @@ Yerel testler için ücretli ses hizmeti zorunlu değildir.
 
 ## 6. Diğer model sağlayıcıları
 
-- **6.1** — Ortak sürücü sözleşmesi: mesaj/araç şeması, akış, kullanım/ücret ve hatalar.
+- **6.1 — tamam** — Core descriptor/request/completion sözleşmesi; API/Codex
+  normalize kullanım, kısmi kapsama, explicit fiyatla fixed-point tahmin ve
+  redakte typed HTTP hataları. CLI/Pal stats ve TUI token sunumu. Upstream
+  snapshot envanteri: dokuz sağlayıcı paketi + HTTP helper.
+  16 yeni test, toplam 532; fmt/Clippy/release, 6 CLI/Pal/PTY kabul grubu ve
+  25 mevcut TUI regresyon kontrolü. [Sözleşme ve kapsam](docs/PROVIDER-CONTRACT.md).
 - **6.2** — Zen/OpenRouter dâhil OpenAI uyumlu servislerin özel davranışları.
 - **6.3** — Anthropic, Google, DeepSeek ve upstream envanterindeki diğer sürücüler.
 - **6.4** — Model keşfi, bağlam sınırları, açık sağlayıcı/model seçimi; sessiz ücretli fallback yok.
@@ -236,7 +241,12 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 6.1 — ortak model sağlayıcı sürücü sözleşmesi.**
+**Sıradaki iş: 6.2 — Zen/OpenRouter dahil OpenAI uyumlu servis davranışları.**
+6.1 tamamlandı: Provider capability/metadata kontratı, mevcut API + Codex
+sürücülerinde bounded request/response, typed hata ve optional usage/cost.
+Eksik veri sıfır/ücretsiz sayılmaz; retry/fallback/login eklenmedi.
+[Upstream envanteri, kullanım ve sınırlar](docs/PROVIDER-CONTRACT.md).
+
 5.5 tamamlandı: seçilen paketlerin SDK/exec/TUI/Pal araçları, config/CLI/profil
 izin kesişimi, canonical route pin ve sandbox workspace devamı. Native sandbox,
 guest üzerinde ses/LSP ve büyük ek protokolü bu teslimde uygulanmadı;

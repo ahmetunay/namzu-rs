@@ -1,4 +1,8 @@
 //! Provider-independent SDK. No network, shell, credentials or implicit tools.
+pub mod provider;
+pub use provider::{
+    ProviderCapabilities, ProviderFailure, ProviderInfo, ResponseMetadata, TokenUsage, UsageTotals,
+};
 mod events;
 mod image;
 pub use events::{Event, EventSink, NoopEvents};
@@ -102,9 +106,21 @@ pub enum AgentError {
     #[error("invalid provider response: {0}")]
     Protocol(&'static str),
     #[error("provider failure: {0}")]
+    Remote(ProviderFailure),
+    #[error("provider failure: {0}")]
     Provider(String),
     #[error("state failure: {0}")]
     State(&'static str),
+}
+
+impl AgentError {
+    pub fn provider_failure(&self) -> Option<&ProviderFailure> {
+        if let Self::Remote(e) = self {
+            Some(e)
+        } else {
+            None
+        }
+    }
 }
 
 /// Shared with provider/tool implementations. Blocking operations must enforce
@@ -193,6 +209,15 @@ impl TurnContext {
 }
 
 pub trait Provider {
+    /// Transport capabilities, not a guarantee that the selected account/model supports them.
+    fn info(&self) -> ProviderInfo {
+        ProviderInfo::default()
+    }
+    /// One-shot metadata for the latest successful completion; must be cleared on a new attempt.
+    fn take_metadata(&mut self) -> Option<ResponseMetadata> {
+        None
+    }
+
     fn take_state(&mut self) -> Option<Value> {
         None
     }
@@ -251,6 +276,8 @@ impl Default for Limits {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Stats {
+    #[serde(default, skip_serializing_if = "UsageTotals::is_empty")]
+    pub usage: UsageTotals,
     pub provider_calls: usize,
     pub tool_calls: usize,
 }
@@ -429,6 +456,7 @@ fn run_history_inner(
     let mut stats = Stats {
         provider_calls: 0,
         tool_calls: 0,
+        usage: Default::default(),
     };
     observer.checkpoint(&messages, &stats, None)?;
     for _ in 0..limits.max_steps {
@@ -438,6 +466,7 @@ fn run_history_inner(
         if names.len() != definitions.len() {
             return Err(AgentError::Configuration("duplicate tool definitions"));
         }
+        provider::validate_request(&messages, &definitions, &provider.info(), &context)?;
         observer.event(Event::ProviderStarted {
             step: stats.provider_calls + 1,
         })?;
@@ -448,6 +477,11 @@ fn run_history_inner(
             &context,
             &mut ObserverEvents(observer),
         )?;
+        provider::validate_completion(&response)?;
+        if let Some(metadata) = provider.take_metadata() {
+            stats.usage.record(&metadata)?;
+            observer.event(Event::ProviderFinished { metadata })?;
+        }
         if let Some(data) = provider.take_state() {
             account(data.to_string().len())?;
             messages.push(Message::ProviderState { data });
@@ -563,6 +597,21 @@ fn run_history_inner(
 /// Offline fixture provider: never accesses a model or account.
 pub struct ScriptedProvider(pub std::collections::VecDeque<Completion>);
 impl Provider for ScriptedProvider {
+    fn info(&self) -> ProviderInfo {
+        use provider::{Streaming, Support};
+        ProviderInfo {
+            provider: "scripted".into(),
+            capabilities: ProviderCapabilities {
+                tools: Support::Supported,
+                images: Support::Supported,
+                replay: Support::Unsupported,
+                usage: Support::Unsupported,
+                streaming: Streaming::Buffered,
+            },
+            ..ProviderInfo::default()
+        }
+    }
+
     fn complete(
         &mut self,
         _: &[Message],

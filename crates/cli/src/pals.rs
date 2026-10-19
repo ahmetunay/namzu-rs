@@ -759,7 +759,9 @@ fn report(id: &str, task: &str, result: Result<Turn, AgentError>) -> Value {
         Ok(t) => {
             json!({"pal_id":id,"task_id":task,"status":"ok","output":t.output,"stats":t.stats})
         }
-        Err(e) => json!({"pal_id":id,"task_id":task,"status":"error","error":e.to_string()}),
+        Err(e) => {
+            json!({"pal_id":id,"task_id":task,"status":"error","error":e.to_string(),"provider_error":e.provider_failure()})
+        }
     }
 }
 fn allocation(total: &Limits, count: usize) -> Result<Limits, AgentError> {

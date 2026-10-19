@@ -198,10 +198,34 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
         .stats
         .as_ref()
         .map(|s| {
-            format!(
+            let mut text = format!(
                 " · {} model / {} tool calls",
                 s.provider_calls, s.tool_calls
-            )
+            );
+            if !s.usage.is_empty() {
+                let token = |value: &Option<namzu_core::provider::ReportedTotal>| {
+                    value.as_ref().map_or_else(
+                        || "?".into(),
+                        |t| {
+                            format!(
+                                "{}{}",
+                                t.sum,
+                                if t.samples < s.usage.responses {
+                                    "+"
+                                } else {
+                                    ""
+                                }
+                            )
+                        },
+                    )
+                };
+                text.push_str(&format!(
+                    " · tokens {}/{} in/out",
+                    token(&s.usage.input_tokens),
+                    token(&s.usage.output_tokens)
+                ));
+            }
+            text
         })
         .unwrap_or_default();
     let elapsed = if app.busy {

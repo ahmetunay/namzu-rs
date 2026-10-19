@@ -323,7 +323,7 @@ fn main() -> ExitCode {
                 Err(error) => {
                     println!(
                         "{}",
-                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
                     );
                     ExitCode::FAILURE
                 }
@@ -350,7 +350,7 @@ fn main() -> ExitCode {
                 Err(error) => {
                     println!(
                         "{}",
-                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
                     );
                     ExitCode::FAILURE
                 }
@@ -368,7 +368,7 @@ fn main() -> ExitCode {
                 Err(error) => {
                     println!(
                         "{}",
-                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
                     );
                     ExitCode::FAILURE
                 }
@@ -386,7 +386,7 @@ fn main() -> ExitCode {
                 Err(error) => {
                     println!(
                         "{}",
-                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
                     );
                     ExitCode::FAILURE
                 }
@@ -417,7 +417,7 @@ fn main() -> ExitCode {
                 Err(error) => {
                     println!(
                         "{}",
-                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
                     );
                     ExitCode::FAILURE
                 }
@@ -484,7 +484,12 @@ fn main() -> ExitCode {
                 }
             };
         }
-        Command::Demo { json } => (json, true, None, offline_demo(cancellation)),
+        Command::Demo { json } => (
+            json,
+            true,
+            None,
+            offline_demo(cancellation).map_err(|e| (e, None)),
+        ),
         Command::Exec(args) => {
             let json = args.json;
             let result = execute::execute(*args, cancellation);
@@ -492,7 +497,9 @@ fn main() -> ExitCode {
                 json,
                 false,
                 result.session_id,
-                result.result.map_err(|e| e.to_string()),
+                result
+                    .result
+                    .map_err(|e| (e.to_string(), e.provider_failure().cloned())),
             )
         }
         Command::Session { state_dir, action } => {
@@ -527,11 +534,11 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Err(error) => {
+        Err((error, provider_error)) => {
             if json_output {
                 println!(
                     "{}",
-                    json!({"format_version":1,"status":"error","error":error,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
+                    json!({"format_version":1,"status":"error","error":error,"provider_error":provider_error,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
                 );
             } else {
                 eprintln!("{error}");

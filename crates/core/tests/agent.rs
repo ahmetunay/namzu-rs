@@ -87,6 +87,7 @@ fn tool_output_is_replayed_with_original_id() {
     assert_eq!(
         result.stats,
         Stats {
+            usage: Default::default(),
             provider_calls: 2,
             tool_calls: 1
         }

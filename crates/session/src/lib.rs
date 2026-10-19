@@ -366,6 +366,7 @@ impl Session {
             status: SessionStatus::Complete,
             messages: vec![],
             stats: Stats {
+                usage: Default::default(),
                 provider_calls: 0,
                 tool_calls: 0,
             },

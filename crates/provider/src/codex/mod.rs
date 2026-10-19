@@ -39,16 +39,13 @@ fn http_error(error: reqwest::Error) -> AgentError {
     if error.is_timeout() {
         AgentError::Timeout
     } else {
-        AgentError::Provider("Codex HTTP request failed".into())
+        AgentError::Remote(namzu_core::ProviderFailure::transport())
     }
 }
 fn read_json(response: Response, context: &TurnContext) -> Result<Value, AgentError> {
     context.remaining()?;
     if !response.status().is_success() {
-        return Err(AgentError::Provider(format!(
-            "Codex HTTP status {}",
-            response.status().as_u16()
-        )));
+        return Err(crate::contract::status(&response));
     }
     let mut bytes = vec![];
     response
@@ -69,6 +66,7 @@ pub struct CodexProvider {
     endpoints: Endpoints,
     http: Client,
     replay: Option<Value>,
+    metadata: Option<namzu_core::ResponseMetadata>,
 }
 impl CodexProvider {
     pub fn new(
@@ -96,6 +94,7 @@ impl CodexProvider {
             endpoints: Endpoints::production(),
             http: client()?,
             replay: None,
+            metadata: None,
         })
     }
     pub fn route_identity(&self, context: &TurnContext) -> Result<String, AgentError> {
@@ -159,6 +158,25 @@ fn encode_input(messages: &[Message], route: &str) -> Result<Vec<Value>, AgentEr
     Ok(input)
 }
 impl Provider for CodexProvider {
+    fn info(&self) -> namzu_core::ProviderInfo {
+        use namzu_core::provider::{ProviderCapabilities, ProviderInfo, Streaming, Support};
+        ProviderInfo {
+            contract_version: 1,
+            provider: "codex".into(),
+            model: Some(self.model.clone()),
+            capabilities: ProviderCapabilities {
+                tools: Support::Supported,
+                images: Support::Supported,
+                replay: Support::Supported,
+                usage: Support::Supported,
+                streaming: Streaming::Incremental,
+            },
+        }
+    }
+    fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
+        self.metadata.take()
+    }
+
     fn take_state(&mut self) -> Option<Value> {
         self.replay.take()
     }
@@ -178,6 +196,8 @@ impl Provider for CodexProvider {
         events: &mut dyn namzu_core::EventSink,
     ) -> Result<Completion, AgentError> {
         self.replay = None;
+        self.metadata = None;
+        namzu_core::provider::validate_request(messages, tools, &self.info(), context)?;
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
         let route=serde_json::to_string(&json!({"provider":"codex","endpoint":self.endpoints.api.as_str(),"model":self.model,"account":credential.account_id})).map_err(|_|AgentError::Protocol("cannot encode Codex route"))?;
         let instructions = messages
@@ -219,15 +239,14 @@ impl Provider for CodexProvider {
             context,
         )?;
         if !response.status().is_success() {
-            return Err(AgentError::Provider(format!(
-                "Codex HTTP status {}",
-                response.status().as_u16()
-            )));
+            return Err(crate::contract::status(&response));
         }
         // Some compatible deployments omit the SSE media type. The bounded
         // parser validates actual SSE and requires a completed response before
         // returning any tool calls; the media type alone is not authoritative.
-        let (completion, items) = sse::parse_stream(BufReader::new(response), context, events)?;
+        let (completion, items, metadata) =
+            sse::parse_stream_metadata(BufReader::new(response), context, events)?;
+        self.metadata = Some(metadata);
         self.replay = Some(
             json!({"kind":"namzu.codex.responses","route":route,"signature":{"text":completion.text,"tool_calls":completion.tool_calls},"items":items}),
         );

@@ -81,7 +81,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
   tamamlandı. Gelişmiş dosya/ek 5.1, ses 5.2, LSP 5.3, Docker sandbox 5.4 ve
-  capability/config/exec/TUI/Pal entegrasyonu 5.5 tamam. Sırada sağlayıcılar 6 var.
+  capability/config/exec/TUI/Pal entegrasyonu 5.5 tamam. Ortak sağlayıcı sözleşmesi
+  6.1 hazır; sırada Zen/OpenRouter servis davranışları 6.2 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -434,3 +435,11 @@ reddedilir, host fallback yoktur. Normal exec/TUI/Pal capability entegrasyonu
 Exec, normal/Pal TUI ve Pal görevlerinde aynı izin ve pinned route kuralları
 uygulanır. `--computer-image` + `--sandbox-policy` seçilirse dosya/shell guest'te
 kalır ve sandbox workspace'i turn'ler arasında korunur. [Kullanım ve kabul](docs/CAPABILITIES.md).
+
+## Ortak model sağlayıcı sözleşmesi
+
+6.1: `Provider::info/take_metadata`, ortak request/completion sınırları,
+opsiyonel token kullanımı, ayrı bildirilmiş/tahmini fixed-point maliyet ve typed
+HTTP hataları API/Codex sürücülerine bağlandı. Eksik kullanım ücretsiz sayılmaz;
+otomatik retry veya model fallback yoktur. CLI/Pal stats ve TUI token gösterimi
+ortaktır. [SDK, upstream envanteri ve kabul](docs/PROVIDER-CONTRACT.md).

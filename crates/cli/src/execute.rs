@@ -369,6 +369,19 @@ impl Driver {
 }
 
 impl namzu_core::Provider for Driver {
+    fn info(&self) -> namzu_core::ProviderInfo {
+        match self {
+            Self::Api(driver) => driver.info(),
+            Self::Codex(driver) => driver.info(),
+        }
+    }
+    fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
+        match self {
+            Self::Api(driver) => driver.take_metadata(),
+            Self::Codex(driver) => driver.take_metadata(),
+        }
+    }
+
     fn take_state(&mut self) -> Option<serde_json::Value> {
         match self {
             Self::Api(driver) => driver.take_state(),

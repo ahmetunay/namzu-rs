@@ -10,6 +10,9 @@ pub enum Event {
     ProviderStarted {
         step: usize,
     },
+    ProviderFinished {
+        metadata: crate::ResponseMetadata,
+    },
     AssistantDelta {
         text: String,
     },

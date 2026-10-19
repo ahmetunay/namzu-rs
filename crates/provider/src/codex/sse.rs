@@ -10,11 +10,20 @@ pub(super) fn parse(
     parse_stream(reader, context, &mut namzu_core::NoopEvents)
 }
 
+#[cfg(test)]
 pub(super) fn parse_stream(
-    mut reader: impl BufRead,
+    reader: impl BufRead,
     context: &TurnContext,
     events: &mut dyn EventSink,
 ) -> Result<(Completion, Vec<Value>), AgentError> {
+    let (completion, items, _) = parse_stream_metadata(reader, context, events)?;
+    Ok((completion, items))
+}
+pub(super) fn parse_stream_metadata(
+    mut reader: impl BufRead,
+    context: &TurnContext,
+    events: &mut dyn EventSink,
+) -> Result<(Completion, Vec<Value>, namzu_core::ResponseMetadata), AgentError> {
     let mut total = 0;
     let mut data = String::new();
     let mut done = BTreeMap::new();
@@ -80,12 +89,17 @@ pub(super) fn parse_stream(
                     if items.len() > 4096 {
                         return Err(AgentError::Protocol("too many Codex output items"));
                     }
-                    return Ok((decode(&items)?, items));
+                    let completion = decode(&items)?;
+                    namzu_core::provider::validate_completion(&completion)?;
+                    let metadata = crate::contract::metadata(&event["response"], true)?;
+                    return Ok((completion, items, metadata));
                 }
                 Some("response.incomplete" | "response.failed" | "error") => {
-                    return Err(AgentError::Provider(
-                        "Codex response failed or was incomplete".into(),
-                    ));
+                    return Err(AgentError::Remote(namzu_core::ProviderFailure {
+                        kind: namzu_core::provider::FailureKind::Incomplete,
+                        http_status: None,
+                        retry_after_seconds: None,
+                    }));
                 }
                 _ => (),
             }

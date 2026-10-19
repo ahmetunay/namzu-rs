@@ -378,7 +378,9 @@ fn native_http_tool_roundtrip_replays_opaque_reasoning_and_correct_ids() {
             (
                 200,
                 "text/event-stream",
-                completed(json!([text_item("12")])),
+                event(
+                    json!({"type":"response.completed","response":{"status":"completed","output":[text_item("12")],"usage":{"input_tokens":20,"output_tokens":5,"total_tokens":25}}}),
+                ),
             )
         }),
     ]);
@@ -402,6 +404,10 @@ fn native_http_tool_roundtrip_replays_opaque_reasoning_and_correct_ids() {
     server.join().unwrap();
     assert_eq!(result.output, "12");
     assert_eq!(tools.0, 1);
+    assert_eq!(result.stats.usage.responses, 2);
+    assert_eq!(result.stats.usage.input_tokens.as_ref().unwrap().sum, 20);
+    assert_eq!(result.stats.usage.input_tokens.as_ref().unwrap().samples, 1);
+    assert!(result.stats.usage.reported_cost_nano_usd.is_none());
     assert!(
         result
             .messages
@@ -590,4 +596,47 @@ fn batched_tool_images_follow_all_function_outputs_without_instruction_promotion
             .unwrap()
             .contains("Untrusted image")
     );
+}
+
+#[test]
+fn completed_stream_normalizes_usage_without_pricing_subscription_tokens() {
+    let stream = event(json!({"type":"response.output_text.delta","delta":"partial"}))
+        + &event(
+            json!({"type":"response.completed","response":{"status":"completed","output":[text_item("final")],"usage":{"input_tokens":20,"output_tokens":8,"total_tokens":28,"input_tokens_details":{"cached_tokens":4},"output_tokens_details":{"reasoning_tokens":3}}}}),
+        );
+    let (answer, _, metadata) = sse::parse_stream_metadata(
+        std::io::Cursor::new(stream),
+        &context(),
+        &mut namzu_core::NoopEvents,
+    )
+    .unwrap();
+    assert_eq!(answer.text, "final");
+    let usage = metadata.usage.unwrap();
+    assert_eq!(usage.input_tokens, Some(20));
+    assert_eq!(usage.cached_input_tokens, Some(4));
+    assert_eq!(usage.reasoning_tokens, Some(3));
+    assert!(metadata.cost.is_none());
+}
+#[test]
+fn malformed_or_incomplete_stream_never_returns_successful_metadata() {
+    for (status, usage) in [
+        ("incomplete", json!({"input_tokens":1})),
+        ("completed", json!({"input_tokens":-1})),
+        (
+            "completed",
+            json!({"input_tokens":1,"output_tokens":2,"total_tokens":9}),
+        ),
+    ] {
+        let stream = event(
+            json!({"type":"response.completed","response":{"status":status,"output":[text_item("invalid")],"usage":usage}}),
+        );
+        assert!(
+            sse::parse_stream_metadata(
+                std::io::Cursor::new(stream),
+                &context(),
+                &mut namzu_core::NoopEvents
+            )
+            .is_err()
+        );
+    }
 }
