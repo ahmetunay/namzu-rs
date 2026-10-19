@@ -15,8 +15,9 @@ exec/TUI/Pal akışına uygular. Canlı servis erişimi veya bütün upstream
 Model adı açıkça gerekir. Zen'de `zen/`, Zen Go'da `go/` öneki wire'a
 gönderilmeden çıkarılır. Auto seçiminde `gpt-*`, `o` + rakam ve `muse-spark`
 Responses kullanır; diğer adlar Chat kullanır. `claude-*` ve `gemini-*`
-auto seçiminde native sürücü gerektirdiği için reddedilir; bu sürücüler 6.3
-kapsamıdır. OpenRouter'da model adı sağlayıcının tam slug'ıdır.
+auto seçiminde 6.3 ile native buffered Messages/Google sürücüsünü seçer;
+bu modellerde `--api-stream true` reddedilir.
+[Native sürücülerin kapsamı](NATIVE-PROVIDERS.md). OpenRouter'da model adı sağlayıcının tam slug'ıdır.
 Dinamik model keşfi/bağlam kataloğu 6.4 kapsamındadır.
 
 ## CLI ve kalıcı ayar
@@ -30,7 +31,7 @@ namzu-rs exec 'Projeyi incele' --provider openrouter --model SAGLAYICI/MODEL \
   --api-stream true --effort low --max-output-tokens 2048 --cwd ./proje --json
 ```
 
-`--api-format auto|chat|responses`, `--api-stream true|false`, `--effort` ve
+`--api-format auto|chat|responses` (native biçimler 6.3 belgesinde), `--api-stream true|false`, `--effort` ve
 `--max-output-tokens` exec/TUI/Pal ortak seçenekleridir. Stream varsayılanı
 false'tur. Effort: `none|minimal|low|medium|high|xhigh`; seçilen modelin bunları
 desteklemesi gerekir. Bilinmeyen/uygulanamayan seçenekler sessizce yutulmaz.
@@ -41,8 +42,9 @@ native login ve SSE yolu ayrı kalır.
 Model yer tutucusunu değiştirip `--config /açık/yol/config.json` ile seç.
 Projeden otomatik config yüklenmez. `api_options` alanları strict'tir:
 `format`, `stream`, `reasoning_effort`, `max_output_tokens`, `site_url`,
-`site_name`. Son iki alan yalnızca OpenRouter'a HTTP-Referer/X-Title olarak
-gönderilir. `base_url` ve `api_key_env` config'de verilmezse seçilen servisin
+`site_name`; 6.3 ayrıca `thinking`, `aws_region`, `bedrock_auth` alanlarını ilgili
+servislere ekler. `site_url` ve `site_name` yalnızca OpenRouter'a
+HTTP-Referer/X-Title olarak gönderilir. `base_url` ve `api_key_env` config'de verilmezse seçilen servisin
 varsayılanları kullanılır; açık CLI seçicileri bunları değiştirebilir.
 
 ## Servis davranışları

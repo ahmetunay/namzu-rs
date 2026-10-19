@@ -1386,9 +1386,11 @@ name = "namzu-provider"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "libc",
  "namzu-audio",
  "namzu-core",
  "namzu-session",
+ "openssl",
  "reqwest",
  "serde",
  "serde_json",

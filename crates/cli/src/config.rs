@@ -58,8 +58,20 @@ impl Config {
             || self.max_steps > 10000
             || self.max_tool_calls > 10000
             || !(1..=4 * 1024 * 1024).contains(&self.max_text_bytes)
-            || !["openai-compatible", "openrouter", "zen", "zen-go", "codex"]
-                .contains(&self.provider.as_str())
+            || ![
+                "openai-compatible",
+                "openrouter",
+                "zen",
+                "zen-go",
+                "codex",
+                "anthropic",
+                "google",
+                "deepseek",
+                "bedrock",
+                "lmstudio",
+                "ollama",
+            ]
+            .contains(&self.provider.as_str())
             || self
                 .model
                 .as_ref()
@@ -131,7 +143,17 @@ mod tests {
     fn service_config_selects_its_own_default_endpoint_and_environment_name() {
         let dir = tempfile::tempdir().unwrap();
         let store = PrivateStore::open(dir.path().join("state")).unwrap();
-        for name in ["openrouter", "zen", "zen-go"] {
+        for name in [
+            "openrouter",
+            "zen",
+            "zen-go",
+            "anthropic",
+            "google",
+            "deepseek",
+            "bedrock",
+            "lmstudio",
+            "ollama",
+        ] {
             let path = dir.path().join("config.json");
             std::fs::write(&path, serde_json::json!({"provider":name}).to_string()).unwrap();
             let c = Config::load(&store, Some(&path)).unwrap();

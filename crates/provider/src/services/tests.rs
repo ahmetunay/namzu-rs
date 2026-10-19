@@ -128,7 +128,12 @@ fn profiles_and_wire_selection_are_explicit() {
         Format::Chat
     );
     for model in ["claude-x", "gemini-x"] {
-        assert!(Options::default().resolved(Service::Zen, model).is_err());
+        assert!(
+            Options::default()
+                .resolved(Service::Zen, model)
+                .unwrap()
+                .native()
+        );
     }
     assert!(
         Options {

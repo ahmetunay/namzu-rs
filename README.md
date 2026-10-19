@@ -86,7 +86,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   capability/config/exec/TUI/Pal entegrasyonu 5.5 tamam. Ortak sağlayıcı sözleşmesi
   6.1 ve Zen/Zen Go/OpenRouter servis profilleri 6.2 tamam. API Chat/Responses,
   opt-in SSE, private reasoning replay ve raporlanan ücret desteği var;
-  [kapsam ve kullanım](docs/COMPATIBLE-SERVICES.md). Sırada native sürücüler 6.3 var.
+  [kapsam ve kullanım](docs/COMPATIBLE-SERVICES.md). 6.3 ile Anthropic/Google/
+  Bedrock/Ollama native JSON, DeepSeek Chat ve LM Studio HTTP profilleri eklendi;
+  [desteklenen yollar ve eksikler](docs/NATIVE-PROVIDERS.md). Sırada model keşfi 6.4 var.
 
 ## 0.3 — özel durum ve oturum devamı
 

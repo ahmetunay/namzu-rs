@@ -13,14 +13,37 @@ pub enum Service {
     Openrouter,
     Zen,
     ZenGo,
+    Anthropic,
+    Google,
+    Deepseek,
+    Bedrock,
+    Lmstudio,
+    Ollama,
 }
 impl Service {
+    pub fn key_optional(self) -> bool {
+        matches!(self, Self::Lmstudio | Self::Ollama)
+    }
+    pub fn normalize_model(self, model: &str) -> &str {
+        match self {
+            Self::Zen => model.strip_prefix("zen/").unwrap_or(model),
+            Self::ZenGo => model.strip_prefix("go/").unwrap_or(model),
+            Self::Google => model.strip_prefix("models/").unwrap_or(model),
+            _ => model,
+        }
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::OpenaiCompatible => "openai-compatible",
             Self::Openrouter => "openrouter",
             Self::Zen => "zen",
             Self::ZenGo => "zen-go",
+            Self::Anthropic => "anthropic",
+            Self::Google => "google",
+            Self::Deepseek => "deepseek",
+            Self::Bedrock => "bedrock",
+            Self::Lmstudio => "lmstudio",
+            Self::Ollama => "ollama",
         }
     }
     pub fn parse(name: &str) -> Result<Self, AgentError> {
@@ -29,6 +52,12 @@ impl Service {
             "openrouter" => Ok(Self::Openrouter),
             "zen" => Ok(Self::Zen),
             "zen-go" => Ok(Self::ZenGo),
+            "anthropic" => Ok(Self::Anthropic),
+            "google" => Ok(Self::Google),
+            "deepseek" => Ok(Self::Deepseek),
+            "bedrock" => Ok(Self::Bedrock),
+            "lmstudio" => Ok(Self::Lmstudio),
+            "ollama" => Ok(Self::Ollama),
             _ => Err(AgentError::Configuration("unsupported compatible service")),
         }
     }
@@ -38,6 +67,12 @@ impl Service {
             Self::Openrouter => "https://openrouter.ai/api/v1",
             Self::Zen => "https://opencode.ai/zen/v1",
             Self::ZenGo => "https://opencode.ai/zen/go/v1",
+            Self::Anthropic => "https://api.anthropic.com/v1",
+            Self::Google => "https://generativelanguage.googleapis.com/v1beta",
+            Self::Deepseek => "https://api.deepseek.com",
+            Self::Bedrock => "https://bedrock-runtime.us-east-1.amazonaws.com",
+            Self::Lmstudio => "http://localhost:1234/v1",
+            Self::Ollama => "http://localhost:11434",
         }
     }
     pub fn key_env(self) -> &'static str {
@@ -45,6 +80,12 @@ impl Service {
             Self::OpenaiCompatible => "OPENAI_API_KEY",
             Self::Openrouter => "OPENROUTER_API_KEY",
             Self::Zen | Self::ZenGo => "OPENCODE_API_KEY",
+            Self::Anthropic => "ANTHROPIC_API_KEY",
+            Self::Google => "GOOGLE_API_KEY",
+            Self::Deepseek => "DEEPSEEK_API_KEY",
+            Self::Bedrock => "AWS_BEARER_TOKEN_BEDROCK",
+            Self::Lmstudio => "LMSTUDIO_API_KEY",
+            Self::Ollama => "OLLAMA_API_KEY",
         }
     }
 }
@@ -55,6 +96,18 @@ pub enum Format {
     Auto,
     Chat,
     Responses,
+    Messages,
+    Google,
+    Converse,
+    Ollama,
+}
+impl Format {
+    pub fn native(self) -> bool {
+        matches!(
+            self,
+            Self::Messages | Self::Google | Self::Converse | Self::Ollama
+        )
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -65,6 +118,12 @@ pub struct Options {
     pub max_output_tokens: Option<u32>,
     pub site_url: Option<String>,
     pub site_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aws_region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bedrock_auth: Option<String>,
 }
 impl Options {
     pub fn validate(&self) -> Result<(), AgentError> {
@@ -105,29 +164,82 @@ impl Options {
                 "attribution headers apply only to OpenRouter",
             ));
         }
+        let model = service.normalize_model(model);
+        let expected = match service {
+            Service::Anthropic => Some(Format::Messages),
+            Service::Google => Some(Format::Google),
+            Service::Bedrock => Some(Format::Converse),
+            Service::Ollama => Some(Format::Ollama),
+            Service::Zen | Service::ZenGo if model.starts_with("claude-") => Some(Format::Messages),
+            Service::Zen | Service::ZenGo if model.starts_with("gemini-") => Some(Format::Google),
+            _ => None,
+        };
         let format = match self.format {
-            Format::Auto if matches!(service, Service::Zen | Service::ZenGo) => {
-                if model.starts_with("claude-") || model.starts_with("gemini-") {
-                    return Err(AgentError::Configuration(
-                        "Zen native Messages/Google models require their native driver; choose a supported Chat/Responses model",
-                    ));
-                }
-                if model == "muse-spark"
-                    || model.starts_with("gpt-")
-                    || model.as_bytes().first() == Some(&b'o')
-                        && model.as_bytes().get(1).is_some_and(u8::is_ascii_digit)
+            Format::Auto => expected.unwrap_or_else(|| {
+                if matches!(service, Service::Zen | Service::ZenGo)
+                    && (model == "muse-spark"
+                        || model.starts_with("gpt-")
+                        || model.as_bytes().first() == Some(&b'o')
+                            && model.as_bytes().get(1).is_some_and(u8::is_ascii_digit))
                 {
                     Format::Responses
                 } else {
                     Format::Chat
                 }
-            }
-            Format::Auto => Format::Chat,
-            format => format,
+            }),
+            f => f,
         };
-        if service == Service::Openrouter && format != Format::Chat {
+        if expected.is_some_and(|f| f != format)
+            || expected.is_none() && format.native()
+            || matches!(
+                service,
+                Service::Openrouter | Service::Deepseek | Service::Lmstudio
+            ) && format != Format::Chat
+        {
             return Err(AgentError::Configuration(
-                "OpenRouter profile uses Chat Completions",
+                "wire format does not match selected service/model",
+            ));
+        }
+        if format.native() && self.stream {
+            return Err(AgentError::Configuration(
+                "native driver currently supports buffered JSON only; use --api-stream false",
+            ));
+        }
+        if self.reasoning_effort.is_some()
+            && (format.native() || matches!(service, Service::Deepseek | Service::Lmstudio))
+        {
+            return Err(AgentError::Configuration(
+                "reasoning effort is not implemented on this wire",
+            ));
+        }
+        if self
+            .thinking
+            .as_ref()
+            .is_some_and(|s| !["adaptive", "enabled", "disabled"].contains(&s.as_str()))
+            || self.thinking.is_some() && service != Service::Deepseek
+        {
+            return Err(AgentError::Configuration(
+                "thinking type applies only to DeepSeek Chat",
+            ));
+        }
+        if self
+            .bedrock_auth
+            .as_ref()
+            .is_some_and(|s| !["bearer", "sigv4"].contains(&s.as_str()))
+            || (self.bedrock_auth.is_some() || self.aws_region.is_some())
+                && service != Service::Bedrock
+            || self.bedrock_auth.as_deref() == Some("sigv4") && self.aws_region.is_none()
+            || self.aws_region.is_some() && self.bedrock_auth.as_deref() != Some("sigv4")
+            || self.aws_region.as_ref().is_some_and(|s| {
+                s.is_empty()
+                    || s.len() > 64
+                    || !s
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            })
+        {
+            return Err(AgentError::Configuration(
+                "invalid Bedrock auth/region options",
             ));
         }
         Ok(format)

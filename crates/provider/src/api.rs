@@ -9,7 +9,7 @@ use reqwest::header::AUTHORIZATION;
 use serde_json::{Value, json};
 use std::io::{BufReader, Read};
 impl OpenAiCompatible {
-    fn replay_route(&self) -> String {
+    pub(crate) fn replay_route(&self) -> String {
         json!({"service":self.service,"endpoint":self.endpoint.as_str(),"model":self.model,"options":self.options}).to_string()
     }
     fn chat_messages(&self, messages: &[Message], route: &str) -> Result<Vec<Value>, AgentError> {
@@ -65,6 +65,9 @@ impl OpenAiCompatible {
         self.metadata = None;
         self.replay = None;
         namzu_core::provider::validate_request(messages, tools, &self.info(), ctx)?;
+        if self.format.native() {
+            return self.perform_native(messages, tools, ctx, events);
+        }
         let route = self.replay_route();
         let mut body = if self.format == Format::Responses {
             let mut safe = Vec::new();
@@ -128,6 +131,9 @@ impl OpenAiCompatible {
                 }] = max.into();
             }
         }
+        if let Some(thinking) = &self.options.thinking {
+            body["thinking"] = json!({"type":thinking});
+        }
         if self.service == Service::Openrouter {
             body["provider"] = json!({"allow_fallbacks":false,"require_parameters":true});
         }
@@ -150,9 +156,11 @@ impl OpenAiCompatible {
         let mut request = self
             .client
             .post(self.endpoint.clone())
-            .header(AUTHORIZATION, self.authorization.clone())
             .timeout(ctx.remaining()?)
             .json(&body);
+        if let Some(auth) = &self.authorization {
+            request = request.header(AUTHORIZATION, auth.clone());
+        }
         if let Some(site) = &self.options.site_url {
             request = request.header("HTTP-Referer", site);
         }

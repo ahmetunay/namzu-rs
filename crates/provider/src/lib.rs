@@ -1,10 +1,12 @@
-//! Explicit OpenAI-compatible Chat Completions adapter. No automatic login,
+//! Explicit service-selected Chat, Responses and native JSON transports. No automatic login,
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
 mod api;
+pub mod aws;
 mod chat_stream;
 pub mod codex;
 mod contract;
 mod http;
+mod native;
 pub mod services;
 pub mod speech;
 use http::Client;
@@ -19,7 +21,8 @@ const MAX_BODY: u64 = 4 * 1024 * 1024;
 pub struct OpenAiCompatible {
     client: Client,
     endpoint: Url,
-    authorization: HeaderValue,
+    authorization: Option<HeaderValue>,
+    aws: Option<aws::Credentials>,
     model: String,
     metadata: Option<namzu_core::ResponseMetadata>,
     pricing: Option<namzu_core::provider::Pricing>,
@@ -53,13 +56,12 @@ impl OpenAiCompatible {
         options: services::Options,
     ) -> Result<Self, AgentError> {
         use sha2::{Digest, Sha256};
-        let model = match service {
-            services::Service::Zen => model.strip_prefix("zen/").unwrap_or(&model).to_owned(),
-            services::Service::ZenGo => model.strip_prefix("go/").unwrap_or(&model).to_owned(),
-            _ => model,
-        };
+        let model = service.normalize_model(&model).to_owned();
         let format = options.resolved(service, &model)?;
-        if model.trim().is_empty() || model.len() > 256 || api_key.is_empty() {
+        if model.trim().is_empty()
+            || model.len() > 256
+            || api_key.is_empty() && !service.key_optional()
+        {
             return Err(AgentError::Configuration("model and API key required"));
         }
         let mut endpoint =
@@ -84,19 +86,49 @@ impl OpenAiCompatible {
                 "HTTPS required except on loopback",
             ));
         }
-        let path = format!(
-            "{}/{}",
-            endpoint.path().trim_end_matches('/'),
-            if format == services::Format::Responses {
-                "responses"
-            } else {
-                "chat/completions"
+        {
+            let mut path = endpoint
+                .path_segments_mut()
+                .map_err(|_| AgentError::Configuration("invalid endpoint path"))?;
+            path.pop_if_empty();
+            match format {
+                services::Format::Messages => {
+                    path.push("messages");
+                }
+                services::Format::Google => {
+                    path.push("models")
+                        .push(&format!("{model}:generateContent"));
+                }
+                services::Format::Converse => {
+                    path.push("model").push(&model).push("converse");
+                }
+                services::Format::Ollama => {
+                    path.push("api").push("chat");
+                }
+                services::Format::Responses => {
+                    path.push("responses");
+                }
+                _ => {
+                    path.push("chat").push("completions");
+                }
             }
-        );
-        endpoint.set_path(&path);
-        let mut authorization = HeaderValue::from_str(&format!("Bearer {api_key}"))
-            .map_err(|_| AgentError::Configuration("invalid API key header"))?;
-        authorization.set_sensitive(true);
+        }
+        let authorization = if api_key.is_empty() {
+            None
+        } else {
+            let value = if matches!(
+                format,
+                services::Format::Messages | services::Format::Google
+            ) {
+                api_key.to_owned()
+            } else {
+                format!("Bearer {api_key}")
+            };
+            let mut header = HeaderValue::from_str(&value)
+                .map_err(|_| AgentError::Configuration("invalid API key header"))?;
+            header.set_sensitive(true);
+            Some(header)
+        };
         let client = Client::builder()
             .redirect(Policy::none())
             .build()
@@ -105,6 +137,7 @@ impl OpenAiCompatible {
             client,
             endpoint,
             authorization,
+            aws: None,
             model,
             metadata: None,
             pricing: None,
@@ -226,7 +259,11 @@ impl Provider for OpenAiCompatible {
             capabilities: ProviderCapabilities {
                 tools: Support::Supported,
                 images: Support::Supported,
-                replay: Support::Supported,
+                replay: if self.service == services::Service::Ollama {
+                    Support::Unsupported
+                } else {
+                    Support::Supported
+                },
                 usage: Support::Supported,
                 streaming: if self.options.stream {
                     Streaming::Incremental

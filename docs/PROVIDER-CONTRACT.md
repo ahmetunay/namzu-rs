@@ -129,16 +129,18 @@ Kaynak: `packages/providers/*/package.json` (10 paket).
 |---|---|
 | `@namzu/openai` | mevcut API + native Codex; 6.2 Chat/Responses/SSE |
 | `@namzu/openrouter` | 6.2 tamam; API-key Chat/SSE ve raporlanan maliyet |
-| `@namzu/zen` | 6.2 Chat/Responses tamam; native Messages/Google 6.3 |
-| `@namzu/anthropic` | 6.3 |
-| `@namzu/google` | 6.3 |
-| `@namzu/deepseek` | 6.3 |
-| `@namzu/bedrock` | 6.3 |
-| `@namzu/lmstudio` | 6.3 |
-| `@namzu/ollama` | 6.3 |
+| `@namzu/zen` | 6.2 Chat/Responses; 6.3 buffered native Messages/Google |
+| `@namzu/anthropic` | 6.3 buffered native Messages |
+| `@namzu/google` | 6.3 API-key buffered GenerateContent |
+| `@namzu/deepseek` | 6.3 Chat/SSE ve explicit thinking.type |
+| `@namzu/bedrock` | 6.3 buffered Converse, bearer/static-session SigV4 |
+| `@namzu/lmstudio` | 6.3 OpenAI uyumlu HTTP; WebSocket SDK uygulanmadı |
+| `@namzu/ollama` | 6.3 buffered native Chat; thinking kapalı |
 | `@namzu/http` | ortak HTTP yardımcı paketi; ayrı model sağlayıcısı sayılmaz |
 
-Model keşfi/context limitleri 6.4, bütün yeni sürücülerde kapsamlı ortak
+6.3 sürücülerinin sınırları ve uygulanmamış upstream opsiyonları
+[Native sağlayıcılar](NATIVE-PROVIDERS.md) belgesindedir. Native sürücüler
+Buffered bildirir; streaming isteği reddedilir. Model keşfi/context limitleri 6.4, bütün yeni sürücülerde kapsamlı ortak
 conformance matrisi ve açık istekle canlı smoke 6.5'tedir. Yeni provider/model
 için canlı API erişimi bu teslimde kanıtlanmış sayılmaz.
 

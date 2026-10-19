@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "provider": "anthropic",
+  "model": "MODEL_ID",
+  "timeout": 300,
+  "api_options": {
+    "format": "auto",
+    "stream": false,
+    "max_output_tokens": 4096
+  }
+}

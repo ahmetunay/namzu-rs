@@ -42,13 +42,20 @@ pub struct RunOptions {
     #[arg(long)]
     pub effort: Option<String>,
     /// Explicit compatible wire format: auto, chat, responses.
-    #[arg(long,value_parser=["auto","chat","responses"])]
+    #[arg(long,value_parser=["auto","chat","responses","messages","google","converse","ollama"])]
     pub api_format: Option<String>,
     /// Request incremental API streaming; takes true or false.
     #[arg(long,action=clap::ArgAction::Set)]
     pub api_stream: Option<bool>,
     #[arg(long,value_parser=clap::value_parser!(u32).range(1..=1_000_000))]
     pub max_output_tokens: Option<u32>,
+    /// DeepSeek Chat thinking control; effort is not carried by that endpoint.
+    #[arg(long,value_parser=["adaptive","enabled","disabled"])]
+    pub thinking: Option<String>,
+    #[arg(long,value_parser=["bearer","sigv4"])]
+    pub bedrock_auth: Option<String>,
+    #[arg(long)]
+    pub aws_region: Option<String>,
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..=86400))]
     pub timeout: Option<u64>,
     #[arg(long)]
@@ -345,9 +352,42 @@ pub(crate) fn driver_for(args: &RunOptions, config: &Config) -> Result<Driver, A
             )?,
         )))
     } else {
-        let key = std::env::var(&config.api_key_env).map_err(|_| {
-            AgentError::Configuration("API key environment variable is missing or invalid")
-        })?;
+        let service = namzu_provider::services::Service::parse(&config.provider)?;
+        let key = if service.key_optional() && std::env::var_os(&config.api_key_env).is_none() {
+            String::new()
+        } else {
+            std::env::var(&config.api_key_env).map_err(|_| {
+                AgentError::Configuration("API key environment variable is missing or invalid")
+            })?
+        };
+        if service == namzu_provider::services::Service::Bedrock
+            && config.api_options.bedrock_auth.as_deref() == Some("sigv4")
+        {
+            let secret = std::env::var("AWS_SECRET_ACCESS_KEY").map_err(|_| {
+                AgentError::Configuration("AWS_SECRET_ACCESS_KEY is required for explicit SigV4")
+            })?;
+            let token = match std::env::var("AWS_SESSION_TOKEN") {
+                Ok(v) => Some(v),
+                Err(std::env::VarError::NotPresent) => None,
+                Err(_) => return Err(AgentError::Configuration("invalid AWS_SESSION_TOKEN")),
+            };
+            let credentials = namzu_provider::aws::Credentials::new(
+                config
+                    .api_options
+                    .aws_region
+                    .clone()
+                    .ok_or(AgentError::Configuration("AWS region required"))?,
+                key,
+                secret,
+                token,
+            )?;
+            return Ok(Driver::Api(Box::new(OpenAiCompatible::for_bedrock(
+                &config.base_url,
+                model,
+                credentials,
+                config.api_options.clone(),
+            )?)));
+        }
         Ok(Driver::Api(Box::new(OpenAiCompatible::for_service(
             namzu_provider::services::Service::parse(&config.provider)?,
             &config.base_url,
@@ -490,7 +530,10 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
     if c.provider == "codex"
         && (args.api_format.is_some()
             || args.api_stream.is_some()
-            || args.max_output_tokens.is_some())
+            || args.max_output_tokens.is_some()
+            || args.thinking.is_some()
+            || args.bedrock_auth.is_some()
+            || args.aws_region.is_some())
     {
         return Err(AgentError::Configuration(
             "API wire/stream/token options do not apply to Codex",
@@ -505,6 +548,22 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
     }
     if let Some(max) = args.max_output_tokens {
         c.api_options.max_output_tokens = Some(max);
+    }
+    if let Some(v) = &args.thinking {
+        c.api_options.thinking = Some(v.clone());
+    }
+    if let Some(v) = &args.bedrock_auth {
+        c.api_options.bedrock_auth = Some(v.clone());
+    }
+    if let Some(v) = &args.aws_region {
+        c.api_options.aws_region = Some(v.clone());
+    }
+    if c.provider == "bedrock"
+        && c.api_options.bedrock_auth.as_deref() == Some("sigv4")
+        && c.api_key_env == "AWS_BEARER_TOKEN_BEDROCK"
+        && args.api_key_env.is_none()
+    {
+        c.api_key_env = "AWS_ACCESS_KEY_ID".into();
     }
     if c.provider != "codex"
         && let Some(effort) = &args.effort
@@ -590,5 +649,83 @@ mod service_tests {
         let store = PrivateStore::open(root.path()).unwrap();
         let args = Args::parse_from(["fixture", "--provider", "codex", "--api-stream", "false"]);
         assert!(config_for(&args.run, &store).is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_profile_tests {
+    use super::*;
+    use clap::Parser;
+    #[derive(Parser)]
+    struct Args {
+        #[command(flatten)]
+        run: RunOptions,
+    }
+    #[test]
+    fn explicit_native_cli_options_and_sigv4_selector_are_pinned() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PrivateStore::open(dir.path()).unwrap();
+        let args = Args::parse_from([
+            "fixture",
+            "--provider",
+            "bedrock",
+            "--model",
+            "fixture",
+            "--bedrock-auth",
+            "sigv4",
+            "--aws-region",
+            "us-east-1",
+        ]);
+        let config = config_for(&args.run, &store).unwrap();
+        assert_eq!(config.api_key_env, "AWS_ACCESS_KEY_ID");
+        assert_eq!(config.api_options.bedrock_auth.as_deref(), Some("sigv4"));
+        let identity = api_identity(&config);
+        let mut changed = config.clone();
+        changed.api_options.aws_region = Some("eu-west-1".into());
+        assert_ne!(identity, api_identity(&changed));
+        let args = Args::parse_from([
+            "fixture",
+            "--provider",
+            "deepseek",
+            "--model",
+            "fixture",
+            "--thinking",
+            "disabled",
+        ]);
+        assert_eq!(
+            config_for(&args.run, &store)
+                .unwrap()
+                .api_options
+                .thinking
+                .as_deref(),
+            Some("disabled")
+        );
+    }
+    #[test]
+    fn native_stream_and_unhonored_codex_aws_thinking_flags_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PrivateStore::open(dir.path()).unwrap();
+        for flags in [
+            vec![
+                "--provider",
+                "google",
+                "--model",
+                "gemini-fixture",
+                "--api-stream",
+                "true",
+            ],
+            vec!["--provider", "codex", "--thinking", "disabled"],
+            vec![
+                "--provider",
+                "anthropic",
+                "--model",
+                "claude-fixture",
+                "--effort",
+                "low",
+            ],
+        ] {
+            let args = Args::parse_from(std::iter::once("fixture").chain(flags));
+            assert!(config_for(&args.run, &store).is_err());
+        }
     }
 }
