@@ -1,3 +1,4 @@
+mod audio;
 mod benchmark;
 mod computer_runtime;
 mod config;
@@ -21,6 +22,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Explicit bounded WAV inspection, speech-to-text and text-to-speech.
+    Audio(Box<audio::AudioArgs>),
     /// Offline filesystem/tool replay. No model calls or credentials.
     Demo {
         #[arg(long)]
@@ -299,6 +302,24 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Audio(args) => {
+            return match audio::run(*args, cancellation) {
+                Ok(value) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"ok","output":value})
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Mcp(args) => {
             return match mcp::run(*args, cancellation) {
                 Ok(value) => {

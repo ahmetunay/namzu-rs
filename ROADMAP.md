@@ -63,7 +63,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
-| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1 tamam; 5.2–5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
+| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.2 tamam; 5.3–5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
@@ -177,7 +177,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   pointer/sayfalama (2 MiB), PNG ekleri ve typed model/TUI history. 11 yeni
   test, toplam 450; gerçek release CLI/HTTP ve normal/Pal PTY kabulü.
   [Kullanım ve sınırlar](docs/FILES.md).
-- **5.2** — Ses giriş/çıkış sürücüleri, format/süre/boyut sınırları ve SDK olayları.
+- **5.2 — tamam** — Bağımsız ses SDK, bounded PCM16 WAV, transkripsiyon/sentez
+  sürücüleri ve payload içermeyen olaylar; OpenAI uyumlu iptal edilebilir HTTP,
+  açık CLI ve private/create-new WAV çıktısı. 23 yeni test, toplam 473; sekiz
+  gerçek release CLI/HTTP kabulü. [Kullanım ve sınırlar](docs/AUDIO.md).
 - **5.3** — LSP yaşam döngüsü, diagnostics, tanım/referans ve düzenleme uygulama.
 - **5.4** — Sandbox politikaları, dosya/süreç/ağ sınırları ve farklı çalışma ortamları;
 2.5'teki temel container altyapısını genişletme.
@@ -224,7 +227,12 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 5.2 — ses giriş/çıkış sürücüleri.**
+**Sıradaki iş: 5.3 — LSP yaşam döngüsü ve kod zekâsı araçları.**
+5.2 tamamlandı: format/süre/byte/UTF-8 sınırları, typed/redakte SDK olayları,
+HTTP iptal/deadline, no replay, canonical WAV ve unknown-size HTTP WAV desteği.
+Mikrofon/playback ve TUI/Pal ses araçları bu aşamada yok; capability entegrasyonu
+5.5'tedir. Canlı model çağrısı 0. [Kabul ve kullanım](docs/AUDIO.md).
+
 5.1 tamamlandı: dört salt okunur dosya/ek aracı, açık kaynak/boyut/bütçe
 sınırları, değişen hash reddi ve PNG normalizasyonu. JSON/JSONL desteklenir;
 PDF/Office/JPEG, URL fetch ve kalıcı blob kayıt sistemi bu kapsamda yoktur.

@@ -1233,6 +1233,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
+name = "namzu-audio"
+version = "0.1.0"
+dependencies = [
+ "cap-std",
+ "libc",
+ "namzu-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "namzu-bench"
 version = "0.1.0"
 dependencies = [
@@ -1254,6 +1267,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "libc",
+ "namzu-audio",
  "namzu-bench",
  "namzu-computer",
  "namzu-core",
@@ -1339,6 +1353,7 @@ name = "namzu-provider"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "namzu-audio",
  "namzu-core",
  "namzu-session",
  "reqwest",

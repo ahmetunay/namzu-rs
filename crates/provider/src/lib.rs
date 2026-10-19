@@ -2,6 +2,7 @@
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
 pub mod codex;
 mod http;
+pub mod speech;
 use http::Client;
 use namzu_core::{
     AgentError, Completion, Message, Provider, ToolCall, ToolDefinition, TurnContext,

@@ -80,7 +80,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
-  tamamlandı. Gelişmiş dosya/ek araçları 5.1 tamam; sırada ses sürücüleri 5.2 var.
+  tamamlandı. Gelişmiş dosya/ek araçları 5.1 ve ses SDK/sürücüleri 5.2 tamam; sırada LSP 5.3 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -402,3 +402,10 @@ sözleşmesi, kalıcı Pal ve temizlik: [VISUAL-AGENT.md](docs/VISUAL-AGENT.md).
 alanlarını ve kayıtlarını seç, PNG dosyasını modele gerçek görsel olarak aktar.
 Normal TUI ve Pal TUI'de F7/özel geçmiş aynı ek yolunu kullanır.
 [Kullanım, SDK ve sınırlar](docs/FILES.md).
+
+## Ses SDK ve sürücüler
+
+5.2: PCM16 WAV doğrulama, ses→metin ve metin→ses sürücüleri, SDK olayları ve
+açık `audio inspect/transcribe/synthesize` komutları. Kaynak/çıktı en çok 12 MiB
+ve 60 saniye; çıktı yeni private WAV dosyasıdır. Mikrofon/playback ve TUI'den
+otomatik ses aktarımı bu aşamada yoktur. [Kullanım ve kabul](docs/AUDIO.md).
