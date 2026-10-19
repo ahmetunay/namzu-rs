@@ -1,20 +1,18 @@
 //! Explicit OpenAI-compatible Chat Completions adapter. No automatic login,
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
+mod api;
+mod chat_stream;
 pub mod codex;
 mod contract;
 mod http;
+pub mod services;
 pub mod speech;
 use http::Client;
 use namzu_core::{
     AgentError, Completion, Message, Provider, ToolCall, ToolDefinition, TurnContext,
 };
-use reqwest::{
-    Url,
-    header::{AUTHORIZATION, HeaderValue},
-    redirect::Policy,
-};
+use reqwest::{Url, header::HeaderValue, redirect::Policy};
 use serde_json::{Value, json};
-use std::io::Read;
 
 const MAX_BODY: u64 = 4 * 1024 * 1024;
 
@@ -25,6 +23,11 @@ pub struct OpenAiCompatible {
     model: String,
     metadata: Option<namzu_core::ResponseMetadata>,
     pricing: Option<namzu_core::provider::Pricing>,
+    service: services::Service,
+    options: services::Options,
+    format: services::Format,
+    replay: Option<Value>,
+    credential_tag: String,
 }
 
 impl OpenAiCompatible {
@@ -34,6 +37,28 @@ impl OpenAiCompatible {
         self
     }
     pub fn new(base_url: &str, model: String, api_key: &str) -> Result<Self, AgentError> {
+        Self::for_service(
+            services::Service::OpenaiCompatible,
+            base_url,
+            model,
+            api_key,
+            services::Options::default(),
+        )
+    }
+    pub fn for_service(
+        service: services::Service,
+        base_url: &str,
+        model: String,
+        api_key: &str,
+        options: services::Options,
+    ) -> Result<Self, AgentError> {
+        use sha2::{Digest, Sha256};
+        let model = match service {
+            services::Service::Zen => model.strip_prefix("zen/").unwrap_or(&model).to_owned(),
+            services::Service::ZenGo => model.strip_prefix("go/").unwrap_or(&model).to_owned(),
+            _ => model,
+        };
+        let format = options.resolved(service, &model)?;
         if model.trim().is_empty() || model.len() > 256 || api_key.is_empty() {
             return Err(AgentError::Configuration("model and API key required"));
         }
@@ -59,7 +84,15 @@ impl OpenAiCompatible {
                 "HTTPS required except on loopback",
             ));
         }
-        let path = format!("{}/chat/completions", endpoint.path().trim_end_matches('/'));
+        let path = format!(
+            "{}/{}",
+            endpoint.path().trim_end_matches('/'),
+            if format == services::Format::Responses {
+                "responses"
+            } else {
+                "chat/completions"
+            }
+        );
         endpoint.set_path(&path);
         let mut authorization = HeaderValue::from_str(&format!("Bearer {api_key}"))
             .map_err(|_| AgentError::Configuration("invalid API key header"))?;
@@ -75,6 +108,11 @@ impl OpenAiCompatible {
             model,
             metadata: None,
             pricing: None,
+            service,
+            options,
+            format,
+            replay: None,
+            credential_tag: format!("{:x}", Sha256::digest(api_key.as_bytes())),
         })
     }
 }
@@ -116,6 +154,16 @@ pub fn decode_completion(value: &Value) -> Result<Completion, AgentError> {
         .ok_or(AgentError::Protocol("missing assistant message"))?;
     if message.get("role").and_then(Value::as_str) != Some("assistant") {
         return Err(AgentError::Protocol("unexpected completion role"));
+    }
+    if message
+        .get("refusal")
+        .is_some_and(|v| !v.is_null() && v != "")
+    {
+        return Err(AgentError::Remote(namzu_core::ProviderFailure {
+            kind: namzu_core::provider::FailureKind::Rejected,
+            http_status: None,
+            retry_after_seconds: None,
+        }));
     }
     let text = match message.get("content") {
         None | Some(Value::Null) => String::new(),
@@ -173,19 +221,26 @@ impl Provider for OpenAiCompatible {
         use namzu_core::provider::{ProviderCapabilities, ProviderInfo, Streaming, Support};
         ProviderInfo {
             contract_version: 1,
-            provider: "openai-compatible".into(),
+            provider: self.service.name().into(),
             model: Some(self.model.clone()),
             capabilities: ProviderCapabilities {
                 tools: Support::Supported,
                 images: Support::Supported,
-                replay: Support::Unsupported,
+                replay: Support::Supported,
                 usage: Support::Supported,
-                streaming: Streaming::Buffered,
+                streaming: if self.options.stream {
+                    Streaming::Incremental
+                } else {
+                    Streaming::Buffered
+                },
             },
         }
     }
     fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
         self.metadata.take()
+    }
+    fn take_state(&mut self) -> Option<Value> {
+        self.replay.take()
     }
     fn complete(
         &mut self,
@@ -193,43 +248,15 @@ impl Provider for OpenAiCompatible {
         tools: &[ToolDefinition],
         context: &TurnContext,
     ) -> Result<Completion, AgentError> {
-        self.metadata = None;
-        namzu_core::provider::validate_request(messages, tools, &self.info(), context)?;
-        let mut body =
-            json!({"model":self.model,"messages":encode_messages(messages),"stream":false});
-        if !tools.is_empty() {
-            body["tools"] = Value::Array(tools.iter().map(|tool| json!({"type":"function","function":{"name":tool.name,"description":tool.description,"parameters":tool.parameters}})).collect());
-        }
-        let response = self.client.send(
-            self.client
-                .post(self.endpoint.clone())
-                .header(AUTHORIZATION, self.authorization.clone())
-                .timeout(context.remaining()?)
-                .json(&body),
-            context,
-        )?;
-        context.remaining()?;
-        if !response.status().is_success() {
-            return Err(contract::status(&response));
-        }
-        let mut bytes = vec![];
-        response
-            .take(MAX_BODY + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| http::read_error(context))?;
-        context.remaining()?;
-        if bytes.len() as u64 > MAX_BODY {
-            return Err(AgentError::Protocol("HTTP response exceeds 4 MiB"));
-        }
-        let value: Value = serde_json::from_slice(&bytes)
-            .map_err(|_| AgentError::Protocol("invalid completion JSON"))?;
-        let completion = decode_completion(&value)?;
-        namzu_core::provider::validate_completion(&completion)?;
-        let mut metadata = contract::metadata(&value, false)?;
-        if let (Some(pricing), Some(usage)) = (&self.pricing, &metadata.usage) {
-            metadata.cost = pricing.estimate(usage)?;
-        }
-        self.metadata = Some(metadata);
-        Ok(completion)
+        self.perform(messages, tools, context, &mut namzu_core::NoopEvents)
+    }
+    fn complete_stream(
+        &mut self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        context: &TurnContext,
+        events: &mut dyn namzu_core::EventSink,
+    ) -> Result<Completion, AgentError> {
+        self.perform(messages, tools, context, events)
     }
 }

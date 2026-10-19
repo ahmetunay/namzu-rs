@@ -476,6 +476,9 @@ def lifecycle_case(binary, kind):
                 terminal.until(lambda: 'Terminal' in terminal.screen.text())
                 fcntl.ioctl(terminal.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 28, 100, 0, 0))
                 os.kill(terminal.pid, signal.SIGWINCH)
+                # Wait for the resized frame before input: SIGWINCH delivery is asynchronous.
+                terminal.until(lambda: 'Namzu Rust' in terminal.screen.text().splitlines()[0]
+                    and 'Enter a message' in terminal.screen.text())
                 terminal.send(b'after resize\r')
                 terminal.until(lambda: terminal.contains('2 tool calls'))
                 terminal.quit()

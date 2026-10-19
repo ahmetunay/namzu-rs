@@ -370,7 +370,7 @@ pub(crate) fn settings(frame: &mut Frame<'_>, panel: &crate::host::Panel) {
     frame.render_widget(Clear, rect);
     let labels = [
         "Model ID",
-        "Effort (Codex only; empty=default)",
+        "Effort (provider-supported; empty=default)",
         "Timeout seconds",
         "Maximum model steps",
         "Maximum tool calls",

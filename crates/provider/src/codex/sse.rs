@@ -19,7 +19,7 @@ pub(super) fn parse_stream(
     let (completion, items, _) = parse_stream_metadata(reader, context, events)?;
     Ok((completion, items))
 }
-pub(super) fn parse_stream_metadata(
+pub(crate) fn parse_stream_metadata(
     mut reader: impl BufRead,
     context: &TurnContext,
     events: &mut dyn EventSink,
@@ -112,7 +112,7 @@ pub(super) fn parse_stream_metadata(
         }
     }
 }
-fn decode(items: &[Value]) -> Result<Completion, AgentError> {
+pub(crate) fn decode(items: &[Value]) -> Result<Completion, AgentError> {
     let mut completion = Completion::default();
     let mut final_text = String::new();
     let mut phased = false;

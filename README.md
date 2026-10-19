@@ -49,8 +49,10 @@ araçlar `read_file`, `list_files`, `search_files`, `diff_file` ve 5.1 ile
 dosyalara ve ağa da erişim sağlar, OS sandbox'ı değildir. `--tool-allow` araç
 listesini daraltır; `--tool-deny` her zaman önceliklidir. Shell'in env'i
 temizlenir; yalnızca PATH/locale ve proxy/CA değişkenleri aktarılır. Anahtar komut
-satırında alınmaz, kaydedilmez ve hata çıktısına eklenmez. Bu adaptör Chat
-Completions API içindir; Codex aboneliği için aşağıdaki ayrı native sürücüyü kullan.
+satırında alınmaz, kaydedilmez ve hata çıktısına eklenmez. API adaptörü Chat
+Completions ve açık seçimle Responses destekler; Zen/OpenRouter profilleri için
+[servis ayarlarını](docs/COMPATIBLE-SERVICES.md) oku. Codex aboneliği için
+ayrı native sürücüyü kullan.
 Önceki oturumdan kimlik bilgileri taşınmadı. Yeni bir anahtar paylaşman gerekmez.
 
 SDK giriş noktası `namzu_core::run_turn`; sağlayıcılar `Provider`, araç kümeleri
@@ -82,7 +84,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
   tamamlandı. Gelişmiş dosya/ek 5.1, ses 5.2, LSP 5.3, Docker sandbox 5.4 ve
   capability/config/exec/TUI/Pal entegrasyonu 5.5 tamam. Ortak sağlayıcı sözleşmesi
-  6.1 hazır; sırada Zen/OpenRouter servis davranışları 6.2 var.
+  6.1 ve Zen/Zen Go/OpenRouter servis profilleri 6.2 tamam. API Chat/Responses,
+  opt-in SSE, private reasoning replay ve raporlanan ücret desteği var;
+  [kapsam ve kullanım](docs/COMPATIBLE-SERVICES.md). Sırada native sürücüler 6.3 var.
 
 ## 0.3 — özel durum ve oturum devamı
 

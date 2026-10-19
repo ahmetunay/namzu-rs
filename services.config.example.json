@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "provider": "openrouter",
+  "model": "SAGLAYICI/MODEL",
+  "timeout": 300,
+  "api_options": {
+    "format": "chat",
+    "stream": true,
+    "reasoning_effort": "low",
+    "max_output_tokens": 2048,
+    "site_url": "https://example.com/",
+    "site_name": "Namzu Rust"
+  }
+}

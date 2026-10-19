@@ -15,14 +15,15 @@ olmaz. `Provider` trait'i yeni default metotlarla genişletilmiştir:
 
 | Sürücü | Akış | Araç / PNG wire desteği | Opaque replay | Usage |
 |---|---|---|---|---|
-| OpenAI-compatible | buffered | var | yok; başka sürücünün state'i encode edilmez | Chat Completions usage varsa |
+| OpenAI-compatible / Zen / OpenRouter | buffered veya opt-in SSE | var | route + credential bağlı; yabancı state gönderilmez | Chat/Responses usage varsa |
 | Native Codex | incremental SSE | var | route bağlı | completed Responses usage varsa |
 | ScriptedProvider | buffered fixture | SDK tipleri | yok | raporlanmaz |
 
 Bunlar **transport** yetenekleridir. Seçilen hesap/modelin tool/vision desteği,
-kota veya faturalama koşulları keşfedilmiş sayılmaz. API sürücüsü hâlâ
-`stream:false` kullanır; incremental Chat Completions SSE bu aşamada eklenmedi.
-Codex SSE delta'ları geçicidir: tamamlanmış final response tek doğruluk
+kota veya faturalama koşulları keşfedilmiş sayılmaz. 6.2 API sürücüsüne
+opt-in Chat/Responses SSE ve servis profillerini ekler; varsayılan API
+`stream:false` kalır. [Servis davranışları](COMPATIBLE-SERVICES.md).
+SSE delta'ları geçicidir: tamamlanmış final response tek doğruluk
 kaynağıdır. Kesik, incomplete, refused veya bozuk response tool etkisi üretemez.
 
 ## Mesaj, araç ve byte sınırları
@@ -87,8 +88,9 @@ fiyat seçilmiş ama cache sayısı bilinmiyorsa tahmin de bilinmiyor kalır.
 
 SDK'de API sürücüsüne açık `.with_pricing(Pricing { ... })` verilebilir. Caller
 bu fiyatın hangi model/sürüm için geçerli olduğunu kendisi doğrular. Varsayılan
-API/Codex sürücüleri gerçek ücret uydurmaz; vendor'a özgü billing alanları 6.2 ve
-sonraki sürücü işlerinde ele alınır. Bu bir ödeme veya bütçe rezervasyon sistemi
+API/Codex sürücüleri gerçek ücret uydurmaz; 6.2 OpenRouter `usage.cost` alanını
+exact ondalık olarak okur ve pozitif nano altı kalıntıyı yukarı yuvarlar.
+Eksik ücret bilinmiyor kalır; diğer billing alanları sonraki sürücü işlerindedir. Bu bir ödeme veya bütçe rezervasyon sistemi
 değildir; ücret güvenliği yalnızca bu tahmine dayandırılmamalıdır.
 
 Başarılı metadata doğrulanıp Stats'a atomik katılır, `ProviderFinished` olayı
@@ -125,9 +127,9 @@ Kaynak: `packages/providers/*/package.json` (10 paket).
 
 | Upstream paket | Rust planı |
 |---|---|
-| `@namzu/openai` | mevcut API + native Codex; servis detayları 6.2 |
-| `@namzu/openrouter` | 6.2 |
-| `@namzu/zen` | 6.2 |
+| `@namzu/openai` | mevcut API + native Codex; 6.2 Chat/Responses/SSE |
+| `@namzu/openrouter` | 6.2 tamam; API-key Chat/SSE ve raporlanan maliyet |
+| `@namzu/zen` | 6.2 Chat/Responses tamam; native Messages/Google 6.3 |
 | `@namzu/anthropic` | 6.3 |
 | `@namzu/google` | 6.3 |
 | `@namzu/deepseek` | 6.3 |
@@ -138,7 +140,7 @@ Kaynak: `packages/providers/*/package.json` (10 paket).
 
 Model keşfi/context limitleri 6.4, bütün yeni sürücülerde kapsamlı ortak
 conformance matrisi ve açık istekle canlı smoke 6.5'tedir. Yeni provider/model
-veya API erişimi bu teslimde kurulmuş sayılmaz.
+için canlı API erişimi bu teslimde kanıtlanmış sayılmaz.
 
 ## Deterministik doğrulama
 

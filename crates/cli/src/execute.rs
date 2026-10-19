@@ -41,6 +41,14 @@ pub struct RunOptions {
     pub api_key_env: Option<String>,
     #[arg(long)]
     pub effort: Option<String>,
+    /// Explicit compatible wire format: auto, chat, responses.
+    #[arg(long,value_parser=["auto","chat","responses"])]
+    pub api_format: Option<String>,
+    /// Request incremental API streaming; takes true or false.
+    #[arg(long,action=clap::ArgAction::Set)]
+    pub api_stream: Option<bool>,
+    #[arg(long,value_parser=clap::value_parser!(u32).range(1..=1_000_000))]
+    pub max_output_tokens: Option<u32>,
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..=86400))]
     pub timeout: Option<u64>,
     #[arg(long)]
@@ -337,19 +345,23 @@ pub(crate) fn driver_for(args: &RunOptions, config: &Config) -> Result<Driver, A
             )?,
         )))
     } else {
-        if args.effort.is_some() {
-            return Err(AgentError::Configuration(
-                "--effort currently applies to Codex only",
-            ));
-        }
         let key = std::env::var(&config.api_key_env).map_err(|_| {
             AgentError::Configuration("API key environment variable is missing or invalid")
         })?;
-        Ok(Driver::Api(Box::new(OpenAiCompatible::new(
+        Ok(Driver::Api(Box::new(OpenAiCompatible::for_service(
+            namzu_provider::services::Service::parse(&config.provider)?,
             &config.base_url,
             model,
             &key,
+            config.api_options.clone(),
         )?)))
+    }
+}
+pub(crate) fn api_identity(config: &Config) -> serde_json::Value {
+    if config.provider == "openai-compatible" && config.api_options.is_default() {
+        serde_json::json!([config.provider, config.base_url, config.model])
+    } else {
+        serde_json::json!({"provider":config.provider,"base_url":config.base_url,"model":config.model,"api_key_env":config.api_key_env,"api_options":config.api_options})
     }
 }
 impl Driver {
@@ -362,8 +374,7 @@ impl Driver {
         if let Self::Codex(driver) = self {
             driver.route_identity(&context.child(Duration::from_secs(30))?)
         } else {
-            serde_json::to_string(&(&config.provider, &config.base_url, &config.model))
-                .map_err(|_| AgentError::Configuration("cannot encode provider route"))
+            Ok(api_identity(config).to_string())
         }
     }
 }
@@ -447,6 +458,15 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
         c.model = Some(v.clone());
     }
     if let Some(v) = &args.provider {
+        if v != &c.provider && v != "codex" {
+            let service = namzu_provider::services::Service::parse(v)?;
+            if args.base_url.is_none() {
+                c.base_url = service.base_url().into();
+            }
+            if args.api_key_env.is_none() {
+                c.api_key_env = service.key_env().into();
+            }
+        }
         c.provider = v.clone();
     }
     if let Some(v) = &args.base_url {
@@ -467,7 +487,37 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
     if let Some(v) = args.max_text_bytes {
         c.max_text_bytes = v;
     }
+    if c.provider == "codex"
+        && (args.api_format.is_some()
+            || args.api_stream.is_some()
+            || args.max_output_tokens.is_some())
+    {
+        return Err(AgentError::Configuration(
+            "API wire/stream/token options do not apply to Codex",
+        ));
+    }
+    if let Some(format) = &args.api_format {
+        c.api_options.format = serde_json::from_value(serde_json::Value::String(format.clone()))
+            .map_err(|_| AgentError::Configuration("invalid API wire format"))?;
+    }
+    if let Some(stream) = args.api_stream {
+        c.api_options.stream = stream;
+    }
+    if let Some(max) = args.max_output_tokens {
+        c.api_options.max_output_tokens = Some(max);
+    }
+    if c.provider != "codex"
+        && let Some(effort) = &args.effort
+    {
+        c.api_options.reasoning_effort = Some(effort.clone());
+    }
     c.validate()?;
+    if c.provider != "codex" {
+        let service = namzu_provider::services::Service::parse(&c.provider)?;
+        if let Some(model) = &c.model {
+            c.api_options.resolved(service, model)?;
+        }
+    }
     let names = args.capabilities.names()?;
     c.capabilities.identity(&names)?;
     if args.computer.sandbox_policy.is_some() && !c.capabilities.permits("sandbox") {
@@ -476,4 +526,69 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
         ));
     }
     Ok(c)
+}
+
+#[cfg(test)]
+mod service_tests {
+    use super::*;
+    use clap::Parser;
+    #[derive(Parser)]
+    struct Args {
+        #[command(flatten)]
+        run: RunOptions,
+    }
+    #[test]
+    fn explicit_provider_switch_uses_service_defaults_and_optional_cli_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let store = PrivateStore::open(root.path()).unwrap();
+        let args = Args::parse_from([
+            "fixture",
+            "--provider",
+            "zen",
+            "--model",
+            "gpt-6",
+            "--api-stream",
+            "true",
+            "--max-output-tokens",
+            "100",
+            "--effort",
+            "low",
+        ]);
+        let c = config_for(&args.run, &store).unwrap();
+        assert_eq!(c.base_url, "https://opencode.ai/zen/v1");
+        assert_eq!(c.api_key_env, "OPENCODE_API_KEY");
+        assert!(c.api_options.stream);
+        assert_eq!(c.api_options.reasoning_effort.as_deref(), Some("low"));
+        let args = Args::parse_from([
+            "fixture",
+            "--provider",
+            "openrouter",
+            "--base-url",
+            "http://127.0.0.1:1234/v1",
+            "--api-key-env",
+            "FIXTURE",
+        ]);
+        let c = config_for(&args.run, &store).unwrap();
+        assert_eq!(c.api_key_env, "FIXTURE");
+        assert!(c.base_url.contains("1234"));
+    }
+    #[test]
+    fn api_identity_pins_options_and_key_selector_with_legacy_route_compatibility() {
+        let mut c = Config::default();
+        assert!(api_identity(&c).is_array());
+        c.provider = "openrouter".into();
+        let identity = api_identity(&c);
+        c.api_options.stream = true;
+        assert_ne!(api_identity(&c), identity);
+        c.api_options.stream = false;
+        c.api_key_env = "OTHER_SELECTOR".into();
+        assert_ne!(api_identity(&c), identity);
+    }
+    #[test]
+    fn unsupported_codex_api_options_are_not_silently_ignored() {
+        let root = tempfile::tempdir().unwrap();
+        let store = PrivateStore::open(root.path()).unwrap();
+        let args = Args::parse_from(["fixture", "--provider", "codex", "--api-stream", "false"]);
+        assert!(config_for(&args.run, &store).is_err());
+    }
 }

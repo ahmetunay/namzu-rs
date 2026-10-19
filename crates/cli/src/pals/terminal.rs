@@ -101,9 +101,15 @@ impl Host for PalHost {
         let (o, _, _, p) = self.settings()?;
         let c = o.config().map_err(|e| e.to_string())?;
         Ok(Controls {
-            provider: p.provider,
+            provider: p.provider.clone(),
             model: p.model,
-            effort: p.effort.unwrap_or_default(),
+            effort: if p.provider == "codex" {
+                p.effort.unwrap_or_default()
+            } else {
+                p.effort
+                    .or(c.api_options.reasoning_effort)
+                    .unwrap_or_default()
+            },
             timeout: c.timeout,
             steps: c.max_steps,
             tool_calls: c.max_tool_calls,

@@ -131,7 +131,7 @@ impl AgentHost {
                     && route["model"].as_str() == c.model.as_deref()
                     && route["endpoint"] == "https://chatgpt.com/backend-api/codex/"
             } else {
-                route == &serde_json::json!([c.provider, c.base_url, c.model])
+                route == &crate::execute::api_identity(c)
             }
     }
 }
@@ -209,10 +209,15 @@ impl Host for AgentHost {
         }
         let o = self.options()?;
         let c = config_for(&o, &Self::store(&o)?).map_err(|e| e.to_string())?;
+        let effort = if c.provider == "codex" {
+            o.effort.unwrap_or_default()
+        } else {
+            c.api_options.reasoning_effort.clone().unwrap_or_default()
+        };
         Ok(Controls {
             provider: c.provider,
             model: c.model.unwrap_or_default(),
-            effort: o.effort.unwrap_or_default(),
+            effort,
             timeout: c.timeout,
             steps: c.max_steps,
             tool_calls: c.max_tool_calls,
@@ -227,6 +232,9 @@ impl Host for AgentHost {
         let current = self.controls()?;
         if c.provider != current.provider {
             return Err("Provider changes require a new CLI invocation".into());
+        }
+        if c.provider != "codex" && c.effort.is_empty() && !current.effort.is_empty() {
+            return Err("Use effort 'none' to explicitly disable configured API reasoning".into());
         }
         o.model = Some(c.model);
         o.effort = if c.effort.is_empty() {
