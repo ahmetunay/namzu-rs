@@ -22,7 +22,16 @@ use std::{
 pub use team::{Job, Team, TeamControl};
 
 static SCOPES: AtomicU64 = AtomicU64::new(1);
-const READ_ONLY: &[&str] = &["read_file", "list_files", "search_files", "diff_file"];
+const READ_ONLY: &[&str] = &[
+    "read_file",
+    "list_files",
+    "search_files",
+    "diff_file",
+    "computer_info",
+    "computer_screenshot",
+    "browser_info",
+    "browser_snapshot",
+];
 
 pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()

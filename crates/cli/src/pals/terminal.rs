@@ -13,7 +13,7 @@ pub(super) fn run(
             title: format!("PAL · {id} · F5 tasks · F6 budgets"),
             workspace: "registry-owned Pal workspace; backend pinned in profile".into(),
             permissions: format!(
-                "profile ceiling + current CLI: read{}{}",
+                "profile ceiling + current CLI: read{}{} · {}",
                 if options.run.allow_write {
                     "/write"
                 } else {
@@ -23,7 +23,8 @@ pub(super) fn run(
                     " + shell"
                 } else {
                     ""
-                }
+                },
+                options.run.computer.description()
             ),
             session_id: None,
         },
@@ -157,12 +158,23 @@ impl Host for PalHost {
             .messages
             .into_iter()
             .filter_map(|m| match m {
+                Message::ToolImage {
+                    tool_call_id,
+                    image,
+                } => Some(HistoryEntry {
+                    label: "Image",
+                    content: format!("Screenshot {}×{} · F7 preview", image.width, image.height),
+                    tool_id: Some(tool_call_id),
+                    image: Some(image),
+                }),
                 Message::User { content } => Some(HistoryEntry {
+                    image: None,
                     label: "You",
                     content,
                     tool_id: None,
                 }),
                 Message::Assistant { content, .. } if !content.is_empty() => Some(HistoryEntry {
+                    image: None,
                     label: "Assistant",
                     content,
                     tool_id: None,
@@ -172,6 +184,7 @@ impl Host for PalHost {
                     tool_call_id,
                     ..
                 } => Some(HistoryEntry {
+                    image: None,
                     label: "Tool",
                     content,
                     tool_id: Some(tool_call_id),

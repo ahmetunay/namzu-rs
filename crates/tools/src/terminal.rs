@@ -131,6 +131,7 @@ impl TerminalTools {
                 )?;
                 let error = output.status != "exited" || output.exit_code != Some(0);
                 Ok(ToolResult {
+                    image: None,
                     content: serde_json::to_string(&output)
                         .map_err(|_| AgentError::Protocol("cannot encode process output"))?,
                     is_error: error,

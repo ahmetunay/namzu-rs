@@ -62,7 +62,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
-| 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.3 tamam; 4.4 sırada | İzole bilgisayarda tarayıcı ve görsel eylemler |
+| 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
@@ -166,7 +166,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   fill, ayrı action/upload/download izinleri, bounded dosya aktarımı ve iptal.
   Gerçek tarayıcıda binary upload/download, stale hedef, boyut ve iptal kabulü.
   [Kullanım ve sınırlar](docs/BROWSER-ACTIONS.md).
-- **4.4** — Pal/SDK/TUI entegrasyonu; yerel test sitesiyle görev ve temizlik doğrulaması.
+- **4.4 — tamam** — SDK görsel araçları, typed PNG/history ve Chat/Codex image wire,
+  exec/TUI ephemeral bilgisayar, F7 renkli önizleme/tek kullanımlık onay, Pal
+  izin tavanı ve kalıcı tarayıcı devamı. Gerçek Chromium/HTTP ajan, PTY onay/ret/
+  iptal ve pending/owned temizlik doğrulandı. [Kullanım ve sınırlar](docs/VISUAL-AGENT.md).
 
 ## 5. Dosya, ses, LSP ve sandbox paketleri
 
@@ -219,7 +222,13 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 4.4 — Pal/SDK/TUI görsel araç entegrasyonu.**
+**Sıradaki iş: 5.1 — gelişmiş dosya araçları.**
+4.4 tamamlandı: 13 yeni test, toplam 439 Rust testi; format/Clippy/release,
+6 gerçek Docker/Chromium/HTTP ve PTY kabul senaryosu; 4.2/4.3 SDK/CLI regresyonu.
+PNG görsel veri olarak iki sağlayıcıya aktarılır, konuşma bütçesine dahildir.
+Canlı model çağrısı 0. Offline tek sekme ve açık izin sınırları sürer;
+[ayrıntılı kabul ve kullanım](docs/VISUAL-AGENT.md).
+
 4.3 tamamlandı: isolated-world sabit DOM işlevleri, main-document/frame/loader/URL
 hedef kontrolü, gerçek CDP mouse/key, Unicode value setter ve ayrı dosya izinleri.
 Upload private staging/lazy form read; download GUID/progress/completion, 64 KiB

@@ -37,7 +37,27 @@ pub(crate) struct Entry {
     pub diff: bool,
 }
 
+pub(crate) struct Preview {
+    pub width: usize,
+    pub height: usize,
+    pub rgb: Vec<u8>,
+}
+impl Preview {
+    pub fn from_image(image: &namzu_core::ToolImage) -> Option<Self> {
+        let bytes = image.png().ok()?;
+        let mut reader = png::Decoder::new(bytes.as_slice()).read_info().ok()?;
+        let mut rgb = vec![0; reader.output_buffer_size()];
+        reader.next_frame(&mut rgb).ok()?;
+        Some(Self {
+            width: image.width as usize,
+            height: image.height as usize,
+            rgb,
+        })
+    }
+}
 pub(crate) struct App {
+    pub preview: Option<Preview>,
+    pub show_image: bool,
     pub entries: VecDeque<Entry>,
     pub input: String,
     pub cursor: usize,
@@ -57,6 +77,8 @@ pub(crate) struct App {
 impl App {
     pub fn new(session_id: Option<String>) -> Self {
         Self {
+            preview: None,
+            show_image: false,
             entries: VecDeque::new(),
             input: String::new(),
             cursor: 0,
@@ -206,6 +228,9 @@ impl App {
                 self.selected_tool = Some(id);
             }
             Event::ToolFinished { id, name, result } => {
+                if let Some(image) = &result.image {
+                    self.preview = Preview::from_image(image);
+                }
                 let text = visible(
                     &format!(
                         "{} · {}\n{}",
@@ -265,6 +290,9 @@ impl App {
     pub fn load_history(&mut self, history: crate::History) {
         *self = Self::new(Some(history.id));
         for entry in history.entries {
+            if let Some(image) = &entry.image {
+                self.preview = Preview::from_image(image);
+            }
             self.push(entry.label, &entry.content);
             if let Some(id) = entry.tool_id {
                 self.entries.back_mut().unwrap().tool_id = Some(id);

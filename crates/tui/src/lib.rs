@@ -60,7 +60,14 @@ impl EventSink for ChannelEvents {
         context.remaining()?;
         if matches!(
             call.name.as_str(),
-            "read_file" | "list_files" | "search_files" | "diff_file"
+            "read_file"
+                | "list_files"
+                | "search_files"
+                | "diff_file"
+                | "computer_info"
+                | "computer_screenshot"
+                | "browser_info"
+                | "browser_snapshot"
         ) {
             return Ok(true);
         }
@@ -242,11 +249,34 @@ pub fn run_host(
                 if let Some(request) = &permission {
                     view::approval(frame, &request.call, permission_scroll);
                 }
+                if app.show_image {
+                    view::image(frame, &app, permission.is_some());
+                }
             })?;
             if !event::poll(Duration::from_millis(33))? {
                 continue;
             }
             match event::read()? {
+                InputEvent::Key(key)
+                    if key.kind != KeyEventKind::Release && key.code == KeyCode::F(7) =>
+                {
+                    app.show_image = !app.show_image;
+                }
+                InputEvent::Key(key) if key.kind != KeyEventKind::Release && app.show_image => {
+                    match key.code {
+                        KeyCode::Esc => app.show_image = false,
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            if let Some(turn) = &active {
+                                turn.cancellation.cancel();
+                                app.show_image = false;
+                                permission = None;
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                }
                 InputEvent::Key(key)
                     if key.kind != KeyEventKind::Release && permission.is_some() =>
                 {

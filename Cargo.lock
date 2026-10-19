@@ -1293,6 +1293,8 @@ dependencies = [
 name = "namzu-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "png",
  "serde",
  "serde_json",
  "thiserror",
@@ -1379,6 +1381,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "namzu-core",
+ "png",
  "ratatui",
  "unicode-segmentation",
  "unicode-width 0.2.0",

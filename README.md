@@ -59,7 +59,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 ## Sınırlar
 
 - Varsayılan turn bütçesi: 300 saniye, 64 sağlayıcı adımı, 128 araç çağrısı,
-  4 MiB konuşma metni. CLI süreyi 1–86400 saniyeyle sınırlar.
+  4 MiB konuşma verisi (görseller dahil). CLI süreyi 1–86400 saniyeyle sınırlar.
 - Dosya okuma/yazma 64 KiB, listeleme 512 girdiye sınırlıdır. Mutlak ve `..`
   yollar reddedilir. `cap-std` dosya erişimini kök dizin yeteneğiyle sınırlar;
   bu bir süreç/Docker sandbox'ı değildir.
@@ -385,3 +385,10 @@ ayrı `--allow-browser-actions`, `--allow-upload`, `--allow-download` izinleri,
 64 KiB guest dosyaları ve create-new host export. Fill Unicode destekler;
 eski belge/düğüm ve belirsiz etki otomatik tekrarlanmaz. Başarılı host dosya
 aktarımı çalışan browser oturumunu korur. [Eylem/dosya kullanımı ve kabul](docs/BROWSER-ACTIONS.md).
+
+## Görsel ajan araçları
+
+4.4 ile owned masaüstü/tarayıcı araçları SDK, normal exec/TUI ve Pals üzerinden
+kullanılabilir. Görsel izinler açıkça verilir; TUI F7 ile son PNG'yi gösterir ve
+etki araçları tek kullanımlık onay ister. Kullanım, izinler, model görüntü
+sözleşmesi, kalıcı Pal ve temizlik: [VISUAL-AGENT.md](docs/VISUAL-AGENT.md).

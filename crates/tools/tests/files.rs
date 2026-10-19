@@ -34,6 +34,7 @@ fn perform(root: &TempDir, writable: bool, name: &str, args: serde_json::Value) 
         Message::Tool {
             content, is_error, ..
         } => ToolResult {
+            image: None,
             content: content.clone(),
             is_error: *is_error,
         },

@@ -20,6 +20,8 @@ pub struct ExecArgs {
 
 #[derive(Args, Clone)]
 pub struct RunOptions {
+    #[command(flatten)]
+    pub computer: crate::computer_runtime::VisualSelection,
     #[arg(long, default_value = ".")]
     pub cwd: PathBuf,
     #[command(flatten)]
@@ -101,9 +103,17 @@ pub fn execute_observed(
                 .ok_or(AgentError::Timeout)?,
             cancellation.clone(),
         )?;
+        let computer_spec = args.computer.spec()?;
+        if args.computer.policy().active() && computer_spec.is_none() {
+            return Err(AgentError::Configuration(
+                "normal exec visual tools require --computer-image; no host fallback",
+            ));
+        }
         let provider_route = provider.route(&config, &context)?;
         let mcp_identity = crate::mcp_runtime::identity(&state_dir, &args.mcp, &context)?;
-        let route = if mcp_identity.is_null() {
+        let route = if let Some(spec) = &computer_spec {
+            serde_json::json!({"provider_route":serde_json::from_str::<serde_json::Value>(&provider_route).map_err(|_|AgentError::Protocol("invalid route"))?,"mcp":mcp_identity,"computer":spec}).to_string()
+        } else if mcp_identity.is_null() {
             provider_route
         } else {
             serde_json::json!({"provider_route":serde_json::from_str::<serde_json::Value>(&provider_route).map_err(|_|AgentError::Protocol("invalid route"))?,"mcp":mcp_identity}).to_string()
@@ -125,21 +135,39 @@ pub fn execute_observed(
             (None, None) => None,
         };
         config.tool_deny.extend(args.tool_deny.iter().cloned());
-        let mut tools = TerminalTools::new(
-            &cwd,
-            ToolPolicy {
-                allow_write: args.allow_write,
-                allow_shell: args.allow_shell,
-                allow: allow.clone(),
-                deny: config.tool_deny.clone(),
-            },
-        )
-        .map_err(|_| AgentError::Configuration("cannot open workspace tools"))?;
+        let tool_policy = ToolPolicy {
+            allow_write: args.allow_write,
+            allow_shell: args.allow_shell,
+            allow: allow.clone(),
+            deny: config.tool_deny.clone(),
+        };
+        let manager = if computer_spec.is_some() {
+            Some(crate::computer_runtime::manager(&state_dir, &session.id)?)
+        } else {
+            None
+        };
+        let mut shared = if let (Some(manager), Some(spec)) = (&manager, computer_spec) {
+            let computer = manager.acquire(spec, &context)?;
+            Some(namzu_computer::SharedGuestTools::new(
+                namzu_computer::GuestTools::new(computer, tool_policy.clone())
+                    .with_visual(args.computer.policy()),
+            ))
+        } else {
+            None
+        };
         let mut messages = session.messages.clone();
         messages.push(Message::User { content: prompt });
         session.status = SessionStatus::Running;
         session.save(&store)?;
         let turn = (|| {
+            let mut tools: Box<dyn namzu_core::Tools + '_> = if let Some(shared) = &shared {
+                Box::new(shared.clone())
+            } else {
+                Box::new(
+                    TerminalTools::new(&cwd, tool_policy)
+                        .map_err(|_| AgentError::Configuration("cannot open workspace tools"))?,
+                )
+            };
             let mut observer = PresentationObserver {
                 journal: Journal {
                     store: &store,
@@ -165,7 +193,10 @@ pub fn execute_observed(
             }
             let registry =
                 namzu_mcp::config::Registry::open(&state_dir).map_err(crate::mcp_runtime::error)?;
-            let manager = crate::mcp_runtime::manager(&registry, &args.mcp, &context)?;
+            let mut manager = crate::mcp_runtime::manager(&registry, &args.mcp, &context)?;
+            if let Some(shared) = &shared {
+                manager = manager.with_guest(shared.launcher());
+            }
             let approvals = namzu_mcp::agent::Approvals::default();
             let explicit = args.mcp_approve || observer.events.supports_approval();
             let mut tools = crate::mcp_runtime::load(
@@ -204,6 +235,29 @@ pub fn execute_observed(
                 }
             }
         })();
+        let turn = if let Some(shared) = shared.take() {
+            let cleanup =
+                namzu_core::TurnContext::new(Duration::from_secs(20), Cancellation::default())?;
+            let cleaned = (|| {
+                shared.finish_mcp(turn.is_ok(), &cleanup)?;
+                let mut computer = shared.into_computer()?;
+                if computer.snapshot().pending.is_some() {
+                    computer.detach(&cleanup)?;
+                } else {
+                    computer.close(&cleanup)?;
+                }
+                Ok::<(), AgentError>(())
+            })();
+            match turn {
+                Err(e) => Err(e),
+                Ok(t) => {
+                    cleaned?;
+                    Ok(t)
+                }
+            }
+        } else {
+            turn
+        };
         session.status = if turn.is_ok() {
             SessionStatus::Complete
         } else {

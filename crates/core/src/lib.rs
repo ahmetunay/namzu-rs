@@ -1,6 +1,8 @@
 //! Provider-independent SDK. No network, shell, credentials or implicit tools.
 mod events;
+mod image;
 pub use events::{Event, EventSink, NoopEvents};
+pub use image::{IMAGE_BYTES, ToolImage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -36,6 +38,10 @@ pub enum Message {
         content: String,
         tool_calls: Vec<ToolCall>,
     },
+    ToolImage {
+        tool_call_id: String,
+        image: ToolImage,
+    },
     Tool {
         tool_call_id: String,
         content: String,
@@ -58,6 +64,8 @@ pub struct Completion {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ToolResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<ToolImage>,
     pub content: String,
     pub is_error: bool,
 }
@@ -65,12 +73,14 @@ pub struct ToolResult {
 impl ToolResult {
     pub fn ok(content: impl Into<String>) -> Self {
         Self {
+            image: None,
             content: content.into(),
             is_error: false,
         }
     }
     pub fn error(content: impl Into<String>) -> Self {
         Self {
+            image: None,
             content: content.into(),
             is_error: true,
         }
@@ -375,7 +385,7 @@ fn run_history_inner(
     )?;
     let mut ids = HashSet::new();
     let mut pending = HashSet::new();
-    for message in &messages {
+    for (index, message) in messages.iter().enumerate() {
         match message {
             Message::Assistant { tool_calls, .. } => {
                 if !pending.is_empty() {
@@ -386,6 +396,17 @@ fn run_history_inner(
                         return Err(AgentError::Protocol("invalid historical tool call ID"));
                     }
                     pending.insert(call.id.clone());
+                }
+            }
+            Message::ToolImage {
+                tool_call_id,
+                image,
+            } => {
+                image.png()?;
+                let previous = index.checked_sub(1).and_then(|i| messages.get(i));
+                if !matches!(previous,Some(Message::Tool {tool_call_id:id,is_error:false,..}) if id==tool_call_id)
+                {
+                    return Err(AgentError::Protocol("orphan historical tool image"));
                 }
             }
             Message::Tool { tool_call_id, .. } => {
@@ -501,6 +522,18 @@ fn run_history_inner(
             stats.tool_calls += 1;
             context.remaining()?;
             account(result.content.len())?;
+            if let Some(image) = &result.image {
+                if result.is_error {
+                    return Err(AgentError::Protocol("error result cannot carry image"));
+                }
+                image.png()?;
+                account(
+                    serde_json::to_vec(image)
+                        .map_err(|_| AgentError::Protocol("image encoding"))?
+                        .len(),
+                )?;
+            }
+            let image = result.image.clone();
             let event = Event::ToolFinished {
                 id: call.id.clone(),
                 name: call.name,
@@ -511,6 +544,15 @@ fn run_history_inner(
                 content: result.content,
                 is_error: result.is_error,
             });
+            if let Some(image) = image {
+                messages.push(Message::ToolImage {
+                    tool_call_id: match &event {
+                        Event::ToolFinished { id, .. } => id.clone(),
+                        _ => unreachable!(),
+                    },
+                    image,
+                });
+            }
             observer.checkpoint(&messages, &stats, None)?;
             observer.event(event)?;
         }
@@ -531,6 +573,36 @@ impl Provider for ScriptedProvider {
         self.0
             .pop_front()
             .ok_or_else(|| AgentError::Provider("script exhausted".into()))
+    }
+}
+
+/// Keep image data after the complete batch of function outputs on provider wires.
+pub fn ordered_messages(messages: &[Message]) -> Vec<&Message> {
+    let mut output = Vec::new();
+    let mut images = Vec::new();
+    for message in messages {
+        match message {
+            Message::ToolImage { .. } => images.push(message),
+            Message::Tool { .. } => output.push(message),
+            _ => {
+                output.append(&mut images);
+                output.push(message);
+            }
+        }
+    }
+    output.append(&mut images);
+    output
+}
+
+impl<T: Tools + ?Sized> Tools for Box<T> {
+    fn validate(&mut self, c: &ToolCall, ctx: &TurnContext) -> Result<(), AgentError> {
+        (**self).validate(c, ctx)
+    }
+    fn definitions(&self) -> Vec<ToolDefinition> {
+        (**self).definitions()
+    }
+    fn call(&mut self, c: &ToolCall, ctx: &TurnContext) -> Result<ToolResult, AgentError> {
+        (**self).call(c, ctx)
     }
 }
 

@@ -32,6 +32,49 @@ fn wrapped(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+pub(crate) fn image(frame: &mut Frame<'_>, app: &App, pending: bool) {
+    use ratatui::widgets::Clear;
+    let area = frame.area();
+    frame.render_widget(Clear, area);
+    let title = if pending {
+        "Screenshot · F7/Esc back · approval pending"
+    } else {
+        "Screenshot · F7/Esc back"
+    };
+    let block = Block::default().title(title).borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let Some(image) = &app.preview else {
+        frame.render_widget(Paragraph::new("No screenshot in this conversation"), inner);
+        return;
+    };
+    if inner.width == 0 || inner.height < 2 {
+        return;
+    }
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Owned guest · {}×{} pixels · scaled terminal preview",
+            image.width, image.height
+        )),
+        ratatui::layout::Rect::new(inner.x, inner.y, inner.width, 1),
+    );
+    let w = (inner.width as usize).min(image.width);
+    let h = ((inner.height - 1) as usize).min(image.height.div_ceil(2));
+    for y in 0..h {
+        for x in 0..w {
+            let sx = x * image.width / w;
+            let top = (2 * y) * image.height / (2 * h);
+            let bottom = (2 * y + 1) * image.height / (2 * h);
+            let a = (top * image.width + sx) * 3;
+            let b = (bottom.min(image.height - 1) * image.width + sx) * 3;
+            frame.buffer_mut()[(inner.x + x as u16, inner.y + 1 + y as u16)]
+                .set_symbol("▀")
+                .set_fg(Color::Rgb(image.rgb[a], image.rgb[a + 1], image.rgb[a + 2]))
+                .set_bg(Color::Rgb(image.rgb[b], image.rgb[b + 1], image.rgb[b + 2]));
+        }
+    }
+}
+
 #[cfg(test)]
 fn input_tail(input: &str, width: usize) -> String {
     let mut parts = vec![];
@@ -207,7 +250,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App, settings: &Settings) {
         ));
     }
     frame.render_widget(
-        Paragraph::new("Enter send · F2 newline · Tab tool · F5 sessions · F6 settings · Ctrl-C cancel · Esc exit"),
+        Paragraph::new("Enter send · F2 newline · Tab tool · F5 sessions · F6 settings · F7 image · Ctrl-C cancel · Esc exit"),
         areas[4],
     );
 }

@@ -246,8 +246,13 @@ impl PalOptions {
                 "Pal workspaces are registry-owned; --cwd applies only to exec/tui",
             ));
         }
-        if let Some(image) = &self.image {
-            ComputerSpec::new(image).validate()?;
+        if self.image.is_some() && self.run.computer.image.is_some() {
+            return Err(AgentError::Configuration("select only one image flag"));
+        }
+        if let Some(image) = self.image.as_ref().or(self.run.computer.image.as_ref()) {
+            self.run.computer.spec_for(image)?;
+        } else {
+            self.run.computer.spec()?;
         }
         config_for(&self.run, &self.store()?)
     }
@@ -265,6 +270,13 @@ impl PalOptions {
     fn new_profile(&self, ctx: &TurnContext) -> Result<Profile, AgentError> {
         let c = self.config()?;
         let driver = driver_for(&self.run, &c)?;
+        if self.run.computer.policy().active()
+            && !(self.guest || self.image.is_some() || self.run.computer.image.is_some())
+        {
+            return Err(AgentError::Configuration(
+                "visual Pal ceiling requires --guest or explicit computer image",
+            ));
+        }
         Ok(Profile {
             version: 1,
             provider: c.provider.clone(),
@@ -276,7 +288,7 @@ impl PalOptions {
             api_key_env: c.api_key_env.clone(),
             effort: self.run.effort.clone(),
             identity: driver.route(&c, ctx)?,
-            guest: self.guest || self.image.is_some(),
+            guest: self.guest || self.image.is_some() || self.run.computer.image.is_some(),
             mcp: crate::mcp_runtime::identity(&self.state()?, &self.run.mcp, ctx)?,
         })
     }
@@ -288,9 +300,22 @@ impl PalOptions {
         let p: Profile = serde_json::from_str(&pal.route).map_err(|_| {
             AgentError::Configuration("Pal route was not created by this CLI version")
         })?;
-        if p.version != 1 || (self.guest || self.image.is_some()) && !p.guest {
+        if p.version != 1
+            || (self.guest || self.image.is_some() || self.run.computer.image.is_some()) && !p.guest
+        {
             return Err(AgentError::Configuration(
                 "Pal backend/version mismatch; create a new Pal explicitly",
+            ));
+        }
+        if self.run.computer.policy().active()
+            && (!p.guest
+                || !pal
+                    .tools
+                    .iter()
+                    .any(|name| namzu_computer::VISUAL_NAMES.contains(&name.as_str())))
+        {
+            return Err(AgentError::Configuration(
+                "visual tools require a guest Pal created with an explicit visual ceiling",
             ));
         }
         self.mcp_selection(&p, ctx)?;
@@ -477,12 +502,13 @@ fn execute_run(
         };
     }
     let manager = o.manager(registry, &pal.id)?;
-    let mut computer = if let Some(image) = &o.image {
-        manager.acquire(ComputerSpec::new(image), ctx)?
+    let ephemeral = o.image.as_ref().or(o.run.computer.image.as_ref());
+    let mut computer = if let Some(image) = ephemeral {
+        manager.acquire(o.run.computer.spec_for(image)?, ctx)?
     } else {
         manager.resume(ctx)?
     };
-    if o.image.is_none() {
+    if ephemeral.is_none() {
         computer.preserve_workspace_on_drop();
     }
     // Pending guest work needs explicit host inspection; never acknowledge on behalf of a model.
@@ -493,7 +519,8 @@ fn execute_run(
     }
     start_if_stopped(&mut computer, ctx)?;
     let selection = o.mcp_selection(&profile, ctx)?;
-    let mut tools = GuestTools::new(computer, tool_policy.clone());
+    let mut tools =
+        GuestTools::new(computer, tool_policy.clone()).with_visual(o.run.computer.policy());
     if !selection.servers.is_empty() && pal.tools.iter().any(|s| s.starts_with("mcp_")) {
         #[cfg(not(unix))]
         return Err(AgentError::Configuration("guest MCP requires Unix"));
@@ -539,7 +566,7 @@ fn execute_run(
             drop(agent);
             shared.finish_mcp(result.is_ok() && closed.is_ok(), &cleanup)?;
             let mut computer = shared.into_computer()?;
-            if o.image.is_none() || computer.snapshot().pending.is_some() {
+            if ephemeral.is_none() || computer.snapshot().pending.is_some() {
                 computer.detach(&cleanup)?;
             } else {
                 computer.close(&cleanup)?;
@@ -556,9 +583,16 @@ fn execute_run(
     let result = run.execute(&mut driver, &mut tools, ctx, limits, observer);
     let cleanup = TurnContext::new(Duration::from_secs(20), Cancellation::default())?;
     let mut computer = tools.into_computer();
-    if o.image.is_none() || computer.snapshot().pending.is_some() {
+    if ephemeral.is_none() || computer.snapshot().pending.is_some() {
         // Preserve persistent/uncertain work, but stop it even after parent cancellation.
-        computer.detach(&cleanup)?;
+        if result.is_ok()
+            && computer.snapshot().pending.is_none()
+            && computer.snapshot().spec.desktop.is_some()
+        {
+            computer.release(&cleanup)?;
+        } else {
+            computer.detach(&cleanup)?;
+        }
     } else {
         computer.close(&cleanup)?;
     }
@@ -681,13 +715,37 @@ pub fn run(args: PalArgs, cancellation: Cancellation) -> Result<bool, AgentError
                     .map(String::from)
                     .collect()
             } else {
-                TerminalTools::new(o.state()?, policy)
+                TerminalTools::new(o.state()?, policy.clone())
                     .map_err(|_| AgentError::State("cannot open tool catalogue"))?
                     .definitions()
                     .into_iter()
                     .map(|t| t.name)
                     .collect()
             };
+            if p.guest {
+                let v = o.run.computer.policy();
+                tools.extend(
+                    namzu_computer::VISUAL_NAMES
+                        .iter()
+                        .filter(|name| {
+                            !policy.deny.contains(**name)
+                                && policy.allow.as_ref().is_none_or(|a| a.contains(**name))
+                                && match **name {
+                                    "computer_info"
+                                    | "computer_screenshot"
+                                    | "browser_info"
+                                    | "browser_snapshot" => v.observe,
+                                    "computer_input" => v.input,
+                                    "browser_navigate" => v.navigate,
+                                    "browser_action" => v.actions,
+                                    "browser_upload" => v.upload,
+                                    "browser_download" => v.download,
+                                    _ => false,
+                                }
+                        })
+                        .map(|s| (*s).to_string()),
+                );
+            }
             if !p.mcp.is_null()
                 && let Some(allow) = &o.run.tool_allow
             {

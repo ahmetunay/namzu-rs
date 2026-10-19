@@ -1222,3 +1222,153 @@ fn file_metadata_and_action_debug_are_bounded_and_redacted() {
         .is_err()
     );
 }
+
+#[test]
+fn visual_catalog_requires_grant_hardware_and_generic_policy() {
+    use namzu_computer::VisualPolicy;
+    for (hardware, grant, denied, expected) in [
+        (false, true, false, false),
+        (true, false, false, false),
+        (true, true, true, false),
+        (true, true, false, true),
+    ] {
+        let (_root, _, manager) = setup();
+        let computer = manager
+            .acquire(if hardware { browser_spec() } else { spec() }, &ctx())
+            .unwrap();
+        let mut policy = GuestPolicy::default();
+        if denied {
+            policy.deny.insert("computer_screenshot".into());
+        }
+        let tools = GuestTools::new(computer, policy).with_visual(VisualPolicy {
+            observe: grant,
+            ..Default::default()
+        });
+        let names: Vec<_> = tools.definitions().into_iter().map(|d| d.name).collect();
+        assert_eq!(names.iter().any(|n| n == "computer_screenshot"), expected);
+        assert!(
+            !names
+                .iter()
+                .any(|n| n == "browser_action" || n == "computer_input")
+        );
+    }
+}
+#[test]
+fn visual_tool_cannot_tunnel_other_permission_classes_or_invalid_coordinates() {
+    use namzu_computer::VisualPolicy;
+    let (_root, mock, manager) = setup();
+    let computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let mut tools = GuestTools::new(computer, GuestPolicy::default()).with_visual(VisualPolicy {
+        observe: true,
+        actions: true,
+        input: true,
+        ..Default::default()
+    });
+    let before = mock.0.lock().unwrap().execs;
+    for (name, args) in [
+        (
+            "browser_action",
+            json!({"request":{"action":"navigate","url":"http://127.0.0.1/"}}),
+        ),
+        (
+            "browser_action",
+            json!({"request":{"action":"upload","target":browser_target(),"path":"x"}}),
+        ),
+        (
+            "computer_input",
+            json!({"request":{"action":"move","x":-1,"y":0}}),
+        ),
+        ("computer_input", json!({"request":{"action":"screenshot"}})),
+        ("computer_screenshot", json!({"hidden":"effect"})),
+    ] {
+        assert!(
+            tools
+                .validate(
+                    &ToolCall {
+                        id: "x".into(),
+                        name: name.into(),
+                        arguments: args
+                    },
+                    &ctx()
+                )
+                .is_err()
+        );
+    }
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(tools.computer().snapshot().pending.is_none());
+}
+#[test]
+fn guest_agent_image_has_original_coordinates_and_typed_png() {
+    use namzu_computer::VisualPolicy;
+    let (_root, _, manager) = setup();
+    let computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let mut tools = GuestTools::new(computer, GuestPolicy::default()).with_visual(VisualPolicy {
+        observe: true,
+        ..Default::default()
+    });
+    let result = tools
+        .call(
+            &ToolCall {
+                id: "screen".into(),
+                name: "computer_screenshot".into(),
+                arguments: json!({}),
+            },
+            &ctx(),
+        )
+        .unwrap();
+    assert!(!result.is_error, "{}", result.content);
+    let image = result.image.unwrap();
+    assert_eq!((image.width, image.height), (1024, 768));
+    assert!(image.png().is_ok());
+    assert!(!result.content.contains(&image.png_base64));
+}
+#[test]
+fn invalid_visual_in_agent_batch_prevents_prior_write() {
+    use namzu_computer::VisualPolicy;
+    use namzu_core::{Completion, Limits, ScriptedProvider, run_turn};
+    let (_root, mock, manager) = setup();
+    let computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let mut tools = GuestTools::new(
+        computer,
+        GuestPolicy {
+            allow_write: true,
+            ..Default::default()
+        },
+    )
+    .with_visual(VisualPolicy {
+        input: true,
+        ..Default::default()
+    });
+    let before = mock.0.lock().unwrap().execs;
+    let mut provider = ScriptedProvider(
+        vec![Completion {
+            text: String::new(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "write".into(),
+                    name: "write_file".into(),
+                    arguments: json!({"path":"effect","content":"bad"}),
+                },
+                ToolCall {
+                    id: "input".into(),
+                    name: "computer_input".into(),
+                    arguments: json!({"request":{"action":"move","x":-1,"y":0}}),
+                },
+            ],
+        }]
+        .into(),
+    );
+    assert!(
+        run_turn(
+            &mut provider,
+            &mut tools,
+            "test",
+            Limits::default(),
+            Cancellation::default()
+        )
+        .is_err()
+    );
+    let state = mock.0.lock().unwrap();
+    assert_eq!(state.execs, before);
+    assert!(!state.files.contains_key("effect"));
+}

@@ -32,6 +32,7 @@ pub struct SessionSummary {
     pub updated_ms: u64,
 }
 pub struct HistoryEntry {
+    pub image: Option<namzu_core::ToolImage>,
     pub label: &'static str,
     pub content: String,
     pub tool_id: Option<String>,

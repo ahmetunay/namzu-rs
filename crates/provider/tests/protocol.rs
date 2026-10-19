@@ -109,3 +109,53 @@ fn tool_failure_is_explicitly_source_data() {
     assert_eq!(result["is_error"], true);
     assert_eq!(encoded[1]["role"], "tool");
 }
+
+#[test]
+fn batched_tool_images_follow_all_function_outputs_without_instruction_promotion() {
+    let image=namzu_core::ToolImage{width:2,height:2,png_base64:"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC".into()};
+    assert!(image.png().is_ok());
+    let messages = vec![
+        Message::Assistant {
+            content: String::new(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "a".into(),
+                    name: "screen".into(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "b".into(),
+                    name: "info".into(),
+                    arguments: json!({}),
+                },
+            ],
+        },
+        Message::Tool {
+            tool_call_id: "a".into(),
+            content: "pixels".into(),
+            is_error: false,
+        },
+        Message::ToolImage {
+            tool_call_id: "a".into(),
+            image: image.clone(),
+        },
+        Message::Tool {
+            tool_call_id: "b".into(),
+            content: "info".into(),
+            is_error: false,
+        },
+    ];
+    let wire = encode_messages(&messages);
+    assert_eq!(wire[1]["role"], "tool");
+    assert_eq!(wire[2]["role"], "tool");
+    assert_eq!(wire[2]["tool_call_id"], "b");
+    assert_eq!(wire[3]["role"], "user");
+    assert_eq!(wire[3]["content"][1]["type"], "image_url");
+    assert_eq!(wire[3]["content"][1]["image_url"]["url"], image.data_url());
+    assert!(
+        wire[3]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Untrusted screenshot from tool result a")
+    );
+}

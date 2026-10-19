@@ -1,4 +1,5 @@
 mod benchmark;
+mod computer_runtime;
 mod config;
 mod execute;
 mod mcp;
@@ -76,8 +77,21 @@ enum Command {
 
 #[derive(Subcommand)]
 enum SessionAction {
+    Computer {
+        id: String,
+        #[command(subcommand)]
+        action: SessionComputerAction,
+    },
     List,
-    Show { id: String },
+    Show {
+        id: String,
+    },
+}
+#[derive(Subcommand)]
+enum SessionComputerAction {
+    Show,
+    Read { path: String },
+    Cleanup,
 }
 #[derive(Subcommand)]
 enum ConfigAction {
@@ -139,9 +153,36 @@ fn state_command(
     config: Option<ConfigAction>,
 ) -> Result<(), namzu_core::AgentError> {
     use namzu_session::{PrivateStore, Session, default_state_dir};
-    let store = PrivateStore::open(state_dir.unwrap_or(default_state_dir()?))?;
+    let state = state_dir.unwrap_or(default_state_dir()?);
+    let store = PrivateStore::open(&state)?;
     if let Some(action) = session {
         match action {
+            SessionAction::Computer { id, action } => {
+                let manager = computer_runtime::manager(&state, &id)?;
+                let ctx = namzu_core::TurnContext::new(
+                    std::time::Duration::from_secs(30),
+                    Cancellation::default(),
+                )?;
+                let value = match action {
+                    SessionComputerAction::Show => json!(manager.snapshot()?),
+                    SessionComputerAction::Cleanup => {
+                        manager.recover_cleanup(&ctx)?;
+                        json!({"cleaned":true})
+                    }
+                    SessionComputerAction::Read { path } => {
+                        let mut computer = manager.resume(&ctx)?;
+                        computer.preserve_workspace_on_drop();
+                        if computer.snapshot().phase == namzu_computer::Phase::Stopped {
+                            computer.start(&ctx)?;
+                        }
+                        let bytes = computer.download(&path, &ctx)?;
+                        computer.detach(&ctx)?;
+                        use base64::Engine as _;
+                        json!({"base64":base64::engine::general_purpose::STANDARD.encode(bytes)})
+                    }
+                };
+                println!("{value}");
+            }
             SessionAction::List => {
                 let mut values = vec![];
                 for name in store.names()? {

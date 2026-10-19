@@ -38,17 +38,22 @@ pub fn run(args: TuiArgs, cancellation: Cancellation) -> std::io::Result<()> {
             "demo read/write".into()
         } else {
             format!(
-                "read{}{}",
+                "read{}{} · {}",
                 if args.options.allow_write {
                     "/write"
                 } else {
                     "-only"
                 },
                 if args.options.allow_shell {
-                    " + HOST SHELL"
+                    if args.options.computer.image.is_some() {
+                        " + guest shell"
+                    } else {
+                        " + HOST SHELL"
+                    }
                 } else {
                     ""
-                }
+                },
+                args.options.computer.description()
             )
         },
         session_id: args.options.resume.clone(),
@@ -103,6 +108,9 @@ impl AgentHost {
                 return false;
             }
         }
+        if check_computer_route(options, &route).is_err() {
+            return false;
+        }
         let route = route.get("provider_route").unwrap_or(&route);
         session.status == SessionStatus::Complete
             && session.pending_call.is_none()
@@ -115,6 +123,19 @@ impl AgentHost {
                 route == &serde_json::json!([c.provider, c.base_url, c.model])
             }
     }
+}
+fn check_computer_route(options: &RunOptions, route: &serde_json::Value) -> Result<(), ()> {
+    let current = options.computer.spec().map_err(|_| ())?;
+    let expected = route.get("computer");
+    if current
+        .as_ref()
+        .map(|s| serde_json::to_value(s).unwrap())
+        .as_ref()
+        != expected
+    {
+        return Err(());
+    }
+    Ok(())
 }
 fn model_name(session: &Session) -> String {
     let route: serde_json::Value = serde_json::from_str(&session.route).unwrap_or_default();
@@ -267,13 +288,24 @@ impl Host for AgentHost {
         let mut entries = vec![];
         for message in s.messages {
             match message {
+                Message::ToolImage {
+                    tool_call_id,
+                    image,
+                } => entries.push(HistoryEntry {
+                    label: "Image",
+                    content: format!("Screenshot {}×{} · F7 preview", image.width, image.height),
+                    tool_id: Some(tool_call_id),
+                    image: Some(image),
+                }),
                 Message::User { content } => entries.push(HistoryEntry {
+                    image: None,
                     label: "You",
                     content,
                     tool_id: None,
                 }),
                 Message::Assistant { content, .. } if !content.is_empty() => {
                     entries.push(HistoryEntry {
+                        image: None,
                         label: "Assistant",
                         content,
                         tool_id: None,
@@ -284,6 +316,7 @@ impl Host for AgentHost {
                     tool_call_id,
                     is_error,
                 } => entries.push(HistoryEntry {
+                    image: None,
                     label: "Tool",
                     content: format!("{}\n{}", if is_error { "error" } else { "OK" }, content),
                     tool_id: Some(tool_call_id),

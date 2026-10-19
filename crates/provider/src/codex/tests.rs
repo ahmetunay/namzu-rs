@@ -541,3 +541,53 @@ fn jcode_link_migrates_legacy_credentials_via_one_refresh_without_sharing_grant(
         .is_err()
     );
 }
+
+#[test]
+fn batched_tool_images_follow_all_function_outputs_without_instruction_promotion() {
+    let image=namzu_core::ToolImage{width:2,height:2,png_base64:"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC".into()};
+    assert!(image.png().is_ok());
+    let messages = vec![
+        Message::Assistant {
+            content: String::new(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "a".into(),
+                    name: "screen".into(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "b".into(),
+                    name: "info".into(),
+                    arguments: json!({}),
+                },
+            ],
+        },
+        Message::Tool {
+            tool_call_id: "a".into(),
+            content: "pixels".into(),
+            is_error: false,
+        },
+        Message::ToolImage {
+            tool_call_id: "a".into(),
+            image: image.clone(),
+        },
+        Message::Tool {
+            tool_call_id: "b".into(),
+            content: "info".into(),
+            is_error: false,
+        },
+    ];
+    let wire = encode_input(&messages, "fixture-route").unwrap();
+    assert_eq!(wire[2]["type"], "function_call_output");
+    assert_eq!(wire[3]["type"], "function_call_output");
+    assert_eq!(wire[3]["call_id"], "b");
+    assert_eq!(wire[4]["role"], "user");
+    assert_eq!(wire[4]["content"][1]["type"], "input_image");
+    assert_eq!(wire[4]["content"][1]["image_url"], image.data_url());
+    assert!(
+        wire[4]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Untrusted screenshot")
+    );
+}

@@ -374,6 +374,10 @@ impl<L: Tools> Tools for AgentTools<'_, L> {
         if content.len() > 1024 * 1024 {
             return Err(AgentError::Protocol("MCP content exceeds limit"));
         }
-        Ok(ToolResult { content, is_error })
+        Ok(ToolResult {
+            content,
+            is_error,
+            image: None,
+        })
     }
 }

@@ -217,6 +217,7 @@ fn settings_validation_and_history_restore_keep_failed_sessions_blocked() {
     app.load_history(History {
         id: "s-failed".into(),
         entries: vec![HistoryEntry {
+            image: None,
             label: "You",
             content: "saved request".into(),
             tool_id: None,
@@ -230,4 +231,42 @@ fn settings_validation_and_history_restore_keep_failed_sessions_blocked() {
     assert_eq!(app.context_used, Some(200));
     app.new_conversation();
     assert!(!app.blocked && app.session_id.is_none());
+}
+
+#[test]
+fn typed_screenshot_restores_color_preview_and_clears_on_new_conversation() {
+    let image=namzu_core::ToolImage{width:2,height:2,png_base64:"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC".into()};
+    let mut app = model::App::new(None);
+    app.load_history(History {
+        id: "s-screen".into(),
+        entries: vec![HistoryEntry {
+            image: Some(image.clone()),
+            label: "Image",
+            content: "2×2 pixels".into(),
+            tool_id: Some("screen".into()),
+        }],
+        resumable: true,
+        notice: String::new(),
+        context_bytes: 200,
+    });
+    assert_eq!(
+        app.preview.as_ref().unwrap().rgb,
+        vec![255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]
+    );
+    let backend = ratatui::backend::TestBackend::new(80, 24);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|f| view::image(f, &app, true)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+    assert!(text.contains("approval pending"));
+    assert!(!text.contains(&image.png_base64));
+    assert!(
+        buffer
+            .content
+            .iter()
+            .any(|c| c.fg == ratatui::style::Color::Rgb(255, 0, 0)
+                && c.bg == ratatui::style::Color::Rgb(0, 0, 255))
+    );
+    app.new_conversation();
+    assert!(app.preview.is_none() && !app.show_image);
 }

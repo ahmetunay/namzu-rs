@@ -47,6 +47,12 @@ impl<'a> SharedGuestTools<'a> {
     }
 }
 impl Tools for SharedGuestTools<'_> {
+    fn validate(&mut self, call: &ToolCall, ctx: &TurnContext) -> Result<(), AgentError> {
+        self.0
+            .try_borrow_mut()
+            .map_err(|_| AgentError::State("guest busy"))?
+            .validate(call, ctx)
+    }
     fn definitions(&self) -> Vec<ToolDefinition> {
         self.0.borrow().definitions()
     }

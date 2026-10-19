@@ -16,7 +16,7 @@ use namzu_tools::process::ProcessOutput;
 use protocol::{FILE_LIMIT, GuestRequest, GuestValue, valid_path};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Mutex, time::Duration};
-pub use tools::{GuestPolicy, GuestTools};
+pub use tools::{GuestPolicy, GuestTools, VISUAL_NAMES, VisualPolicy};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
