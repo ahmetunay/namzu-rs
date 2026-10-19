@@ -62,7 +62,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 1 | Etkileşimli terminal / TUI | 1.1–1.4 tamam | Akış, onay, iptal, oturum devamı |
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
-| 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.2 tamam; 4.3–4.4 sırada | İzole bilgisayarda tarayıcı ve görsel eylemler |
+| 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.3 tamam; 4.4 sırada | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | Temel dosya araçları var | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
@@ -162,7 +162,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   açık gezinme izni, redirect/fragment, sınırlı DOM/AX ve aynı Xvfb ekranı.
   Gerçek Docker yerel HTTP oracle'ıyla SDK/CLI kabulü; ağsız tek sekme.
   [Kullanım ve sınırlar](docs/BROWSER.md).
-- **4.3** — Sayfa eylemleri, indirme/yükleme ve dosya aktarımı; izinler ve iptal.
+- **4.3 — tamam** — Belge/düğüm bağlı click/fill/select/press/scroll, Unicode DOM
+  fill, ayrı action/upload/download izinleri, bounded dosya aktarımı ve iptal.
+  Gerçek tarayıcıda binary upload/download, stale hedef, boyut ve iptal kabulü.
+  [Kullanım ve sınırlar](docs/BROWSER-ACTIONS.md).
 - **4.4** — Pal/SDK/TUI entegrasyonu; yerel test sitesiyle görev ve temizlik doğrulaması.
 
 ## 5. Dosya, ses, LSP ve sandbox paketleri
@@ -216,7 +219,17 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 4.3 — sayfa eylemleri, indirme/yükleme ve dosya aktarımı.**
+**Sıradaki iş: 4.4 — Pal/SDK/TUI görsel araç entegrasyonu.**
+4.3 tamamlandı: isolated-world sabit DOM işlevleri, main-document/frame/loader/URL
+hedef kontrolü, gerçek CDP mouse/key, Unicode value setter ve ayrı dosya izinleri.
+Upload private staging/lazy form read; download GUID/progress/completion, 64 KiB
+kontrolü, deny restore ve create-new atomik publication. Başarılı host aktarımı
+browser oturumunu korur; action/upload/download için ayrı pending ve replay reddi.
+7 yeni Rust testi; toplam 426. Format/Clippy/release ve gerçek Chromium SDK/CLI
+eylem, binary dosya, stale/disabled hedef, oversize ve in-flight iptal kabulü;
+4.2 gezinme/DOM/AX/ekran regresyonu geçti. Canlı model çağrısı 0.
+Model/TUI araç entegrasyonu henüz yok. [Kabul ve sınırlar](docs/BROWSER-ACTIONS.md).
+
 4.2 tamamlandı: opt-in Chromium image/spec, PID1 yaşam döngüsü ve sabit
 info/navigate/snapshot Rust worker. URL/izin preflight, bounded HTTP/WebSocket
 CDP, loader-bound load bekleme, redirect/fragment URL doğruluğu, DOM/AX sınırları

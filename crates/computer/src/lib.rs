@@ -582,16 +582,13 @@ impl<E: Engine> Computer<'_, E> {
             ));
         }
         let previous = self.record.pending.clone();
+        let browser_request = if let GuestRequest::Browser { request, .. } = &request {
+            Some(request.clone())
+        } else {
+            None
+        };
         let kind = match &request {
-            GuestRequest::Browser {
-                request: browser::Request::Info,
-                ..
-            } => "browser_info",
-            GuestRequest::Browser {
-                request: browser::Request::Snapshot,
-                ..
-            } => "browser_snapshot",
-            GuestRequest::Browser { .. } => "browser_navigate",
+            GuestRequest::Browser { request, .. } => request.kind(),
             GuestRequest::Probe => "probe",
             GuestRequest::Read { .. } => "read",
             GuestRequest::Write { .. } => "write",
@@ -629,23 +626,13 @@ impl<E: Engine> Computer<'_, E> {
                         Answer::Guest(reply) if reply.version == 1 => {
                             if let Ok(value) = &reply.result {
                                 let valid = match (kind, value) {
-                                    (
-                                        "browser_info" | "browser_snapshot" | "browser_navigate",
-                                        GuestValue::Browser { value },
-                                    ) => {
+                                    (kind, GuestValue::Browser { value })
+                                        if kind.starts_with("browser_") =>
+                                    {
                                         self.record.spec.browser
-                                            && matches!(
-                                                (kind, value),
-                                                ("browser_info", browser::Reply::Info { .. })
-                                                    | (
-                                                        "browser_snapshot",
-                                                        browser::Reply::Snapshot { .. }
-                                                    )
-                                                    | (
-                                                        "browser_navigate",
-                                                        browser::Reply::Navigated { .. }
-                                                    )
-                                            )
+                                            && browser_request
+                                                .as_ref()
+                                                .is_some_and(|r| r.accepts(value))
                                             && value.validate().is_ok()
                                     }
                                     ("probe", GuestValue::Ready)

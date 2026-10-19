@@ -44,6 +44,15 @@ pub struct PalOptions {
     /// Permit explicit browser navigation for this invocation only.
     #[arg(long)]
     pub allow_navigate: bool,
+    /// Permit explicit DOM input/selection/click actions for this invocation.
+    #[arg(long)]
+    pub allow_browser_actions: bool,
+    /// Permit attaching one bounded guest file to a page input.
+    #[arg(long)]
+    pub allow_upload: bool,
+    /// Permit a bounded browser download into a new guest workspace file.
+    #[arg(long)]
+    pub allow_download: bool,
     /// Explicit pinned local image: create a temporary computer for each turn.
     #[arg(long)]
     pub image: Option<String>,
@@ -954,8 +963,18 @@ fn computer(
             serde_json::from_slice(&transfer::read(request)?)
                 .map_err(|_| AgentError::Configuration("invalid browser JSON request"))?;
         request.validate()?;
-        if !request.readonly() && !o.allow_navigate {
-            return Err(AgentError::Configuration("--allow-navigate required"));
+        use namzu_computer::browser::Permission;
+        let allowed = match request.permission() {
+            Permission::Inspect => true,
+            Permission::Navigate => o.allow_navigate,
+            Permission::Act => o.allow_browser_actions,
+            Permission::Upload => o.allow_upload,
+            Permission::Download => o.allow_download,
+        };
+        if !allowed {
+            return Err(AgentError::Configuration(
+                "explicit permission required: --allow-navigate / --allow-browser-actions / --allow-upload / --allow-download",
+            ));
         }
         if !manager.snapshot()?.is_some_and(|r| r.spec.browser) {
             return Err(AgentError::Configuration("browser not configured"));
@@ -1029,13 +1048,18 @@ fn computer(
         }
         _ => (),
     }
-    let keep_running = matches!(
-        action,
-        ComputerAction::Start
-            | ComputerAction::Restart
-            | ComputerAction::Desktop { .. }
-            | ComputerAction::Browser { .. }
-    );
+    let keep_running = (manager.snapshot()?.is_some_and(|r| r.spec.browser)
+        && matches!(
+            action,
+            ComputerAction::Upload { .. } | ComputerAction::Download { .. }
+        ))
+        || matches!(
+            action,
+            ComputerAction::Start
+                | ComputerAction::Restart
+                | ComputerAction::Desktop { .. }
+                | ComputerAction::Browser { .. }
+        );
     let mut lease = manager.resume(ctx)?;
     lease.preserve_workspace_on_drop();
     let result = (|| -> Result<Value, AgentError> {

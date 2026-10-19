@@ -17,23 +17,38 @@ pub struct Cdp {
 }
 impl Cdp {
     pub fn connect() -> Result<Self> {
+        Self::connect_kind(false)
+    }
+    pub fn connect_browser() -> Result<Self> {
+        Self::connect_kind(true)
+    }
+    fn connect_kind(browser: bool) -> Result<Self> {
         let until = std::time::Instant::now() + Duration::from_secs(5);
         loop {
-            match Self::at(9222) {
+            match Self::at_kind(9222, browser) {
                 Ok(c) => return Ok(c),
                 Err(e) if std::time::Instant::now() >= until => return Err(e),
                 Err(_) => std::thread::sleep(Duration::from_millis(25)),
             }
         }
     }
+    #[cfg(test)]
     fn at(port: u16) -> Result<Self> {
+        Self::at_kind(port, false)
+    }
+    fn at_kind(port: u16, browser: bool) -> Result<Self> {
         let address = SocketAddr::from(([127, 0, 0, 1], port));
         let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        let path = if browser {
+            "/json/version"
+        } else {
+            "/json/list"
+        };
         write!(
             stream,
-            "GET /json/list HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
         )?;
         let mut bytes = Vec::new();
         let split = loop {
@@ -75,15 +90,25 @@ impl Cdp {
         bytes.resize(end, 0);
         // Chromium keeps HTTP alive even with Connection: close. Never wait for EOF.
         stream.read_exact(&mut bytes[received..])?;
-        let targets: Vec<Value> = serde_json::from_slice(&bytes[split + 4..])?;
-        // Only one page is controlled. Extra popups/tabs are ambiguous and rejected.
-        let pages: Vec<_> = targets.iter().filter(|t| t["type"] == "page").collect();
-        if pages.len() != 1 {
-            return Err("exactly one browser page required".into());
-        }
-        let endpoint = pages[0]["webSocketDebuggerUrl"]
-            .as_str()
-            .ok_or("CDP endpoint missing")?;
+        let body: Value = serde_json::from_slice(&bytes[split + 4..])?;
+        let endpoint = if browser {
+            body["webSocketDebuggerUrl"]
+                .as_str()
+                .ok_or("browser endpoint missing")?
+        } else {
+            let pages: Vec<_> = body
+                .as_array()
+                .ok_or("CDP target list")?
+                .iter()
+                .filter(|t| t["type"] == "page")
+                .collect();
+            if pages.len() != 1 {
+                return Err("exactly one browser page required".into());
+            }
+            pages[0]["webSocketDebuggerUrl"]
+                .as_str()
+                .ok_or("CDP endpoint missing")?
+        };
         let parsed = url::Url::parse(endpoint)?;
         if parsed.scheme() != "ws"
             || parsed.host_str() != Some("127.0.0.1")
@@ -92,7 +117,11 @@ impl Cdp {
             || parsed.password().is_some()
             || parsed.query().is_some()
             || parsed.fragment().is_some()
-            || !parsed.path().starts_with("/devtools/page/")
+            || !parsed.path().starts_with(if browser {
+                "/devtools/browser/"
+            } else {
+                "/devtools/page/"
+            })
             || endpoint.len() > 512
         {
             return Err("non-local CDP endpoint".into());
@@ -157,6 +186,17 @@ impl Cdp {
     pub fn clear_events(&mut self) {
         self.events.clear();
         self.event_bytes = 0;
+    }
+    pub fn next_event(&mut self) -> Result<Value> {
+        if let Some(value) = self.events.pop_front() {
+            self.event_bytes -= serde_json::to_vec(&value)?.len();
+            return Ok(value);
+        }
+        let value = self.receive()?;
+        if value.get("id").is_some() || value["method"].as_str().is_none() {
+            return Err("unexpected CDP event".into());
+        }
+        Ok(value)
     }
     pub fn wait_loaded(&mut self, loader: &str) -> Result<()> {
         loop {

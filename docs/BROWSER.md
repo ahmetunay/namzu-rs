@@ -1,10 +1,11 @@
 # 4.2 — owned Chromium gezinme ve sayfa inceleme
 
 Tarayıcı, Pal'ın sahipli Linux container'ında, 4.1 Xvfb ekranında görünür Chromium
-olarak çalışır. Native Rust `namzu-browser` worker yalnızca sabit üç işlemi
-kabul eder: `info`, `navigate`, `snapshot`. Rastgele JavaScript/CDP komutu,
+olarak çalışır. 4.2'nin native Rust `namzu-browser` sözleşmesi `info`,
+`navigate`, `snapshot` işlemleridir; 4.3 bunlara hedefe bağlı eylemler ekler. Rastgele JavaScript/CDP komutu,
 host tarayıcısına bağlanma veya kullanıcı profilini içeri alma yoktur.
-Sayfa eylemleri/dosya indirme-yükleme 4.3; model araçları/TUI görsel entegrasyonu
+Sayfa eylemleri/dosya indirme-yükleme 4.3 tamamlandı:
+[kullanım ve sınırlar](BROWSER-ACTIONS.md). Model araçları/TUI görsel entegrasyonu
 4.4 kapsamındadır.
 
 ## İmaj ve yaşam döngüsü

@@ -76,8 +76,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.2
-  tamamlandı. Tarayıcı eylemleri 4.3, model/TUI görsel entegrasyonu 4.4 sırada.
+- TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.3
+  tamamlandı. Model/TUI görsel entegrasyonu 4.4 sırada.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -303,7 +303,8 @@ namzu-rs mcp discover SERVER templates --approve
 [SDK/CLI, kabul ve sınırlar](docs/MCP-DISCOVERY.md). Tam JSON Schema instance
 kontrolü ve normal exec/TUI/Pal model araç entegrasyonu **3.6**'dadır.
 3.6 entegrasyonu ve 3.8 toparlanma tamamlandı. Bilgisayar ekran/girdi **4.1** ve
-tarayıcı/DOM **4.2** hazır; sıradaki iş **4.3 — sayfa eylemleri ve dosya aktarımı**.
+tarayıcı/DOM **4.2** ve sayfa eylemleri/dosya **4.3** hazır; sıradaki iş
+**4.4 — Pal/SDK/TUI görsel araç entegrasyonu**.
 
 ## Yerel checkpoint ve kurtarma
 
@@ -365,8 +366,8 @@ otomatik tekrarlanmaz. [Kabul ve sınırlar](docs/MCP-RECOVERY.md).
 PNG screenshot, koordinat, fare ve klavye işlemleri kullanılabilir.
 `pal --allow-input computer PAL_ID desktop request.json` girdi iznini yalnızca
 o komuta verir; screenshot `--output NEW_FILE.png` ile özel dosyaya yazılır.
-Metin girişi şu an US-layout ASCII ile sınırlıdır. Tarayıcı eylemleri 4.3,
-model/TUI görsel araç entegrasyonu 4.4 kapsamındadır.
+Masaüstü klavye metni US-layout ASCII ile sınırlıdır; 4.3 DOM fill Unicode destekler.
+Model/TUI görsel araç entegrasyonu 4.4 kapsamındadır.
 [İmaj oluşturma, SDK/CLI kullanımı ve kabul](docs/DESKTOP.md).
 
 ## Pal tarayıcı kontrolü
@@ -378,3 +379,9 @@ ağacını verir. Aynı Xvfb ekranının PNG'si desktop API'sinden alınır.
 Tarayıcı mevcut ağsız container içinde çalışır; guest yerel HTTP sayfalarıyla
 doğrulandı, internet erişimi açılmaz. Gezinme hatası/iptali stop/pending ve açık
 inspect/ack korumasını kullanır. [SDK/CLI ve sınırlar](docs/BROWSER.md).
+
+4.3 tamam: snapshot belgesine bağlı click/fill/select/press/scroll işlemleri,
+ayrı `--allow-browser-actions`, `--allow-upload`, `--allow-download` izinleri,
+64 KiB guest dosyaları ve create-new host export. Fill Unicode destekler;
+eski belge/düğüm ve belirsiz etki otomatik tekrarlanmaz. Başarılı host dosya
+aktarımı çalışan browser oturumunu korur. [Eylem/dosya kullanımı ve kabul](docs/BROWSER-ACTIONS.md).

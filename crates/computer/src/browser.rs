@@ -8,23 +8,214 @@ pub const TEXT_BUDGET: usize = 64 * 1024;
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Info,
-    Navigate { url: String },
+    Navigate {
+        url: String,
+    },
     Snapshot,
+    Click {
+        target: Target,
+    },
+    Fill {
+        target: Target,
+        text: String,
+    },
+    Select {
+        target: Target,
+        values: Vec<String>,
+    },
+    Press {
+        target: Target,
+        key: String,
+    },
+    ScrollIntoView {
+        target: Target,
+    },
+    Upload {
+        target: Target,
+        path: String,
+    },
+    Download {
+        document: Document,
+        url: String,
+        path: String,
+    },
 }
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("BrowserRequest(<redacted>)")
     }
 }
-impl Request {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Permission {
+    Inspect,
+    Navigate,
+    Act,
+    Upload,
+    Download,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Document {
+    pub frame_id: String,
+    pub loader_id: String,
+    pub url: String,
+}
+impl From<&Page> for Document {
+    fn from(p: &Page) -> Self {
+        Self {
+            frame_id: p.frame_id.clone(),
+            loader_id: p.loader_id.clone(),
+            url: p.url.clone(),
+        }
+    }
+}
+impl Document {
     pub fn validate(&self) -> Result<(), AgentError> {
-        if let Self::Navigate { url } = self {
-            validate_url(url)?;
+        if self.frame_id.is_empty()
+            || self.frame_id.len() > 128
+            || self.loader_id.is_empty()
+            || self.loader_id.len() > 128
+        {
+            return Err(AgentError::Configuration(
+                "bounded document identity required",
+            ));
+        }
+        validate_url(&self.url)
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Target {
+    pub document: Document,
+    pub backend_node_id: i64,
+}
+impl Target {
+    pub fn validate(&self) -> Result<(), AgentError> {
+        self.document.validate()?;
+        if self.backend_node_id <= 0 {
+            return Err(AgentError::Configuration(
+                "positive backend node ID required",
+            ));
+        }
+        Ok(())
+    }
+}
+pub fn transfer_path(path: &str) -> bool {
+    crate::protocol::valid_path(path)
+        && std::path::Path::new(path).file_name().is_some_and(|s| {
+            s.to_str().is_some_and(|s| {
+                !s.is_empty() && s.len() <= 255 && !s.chars().any(char::is_control)
+            })
+        })
+}
+pub fn press_key(key: &str) -> Option<(&'static str, u32)> {
+    Some(match key {
+        "ENTER" => ("Enter", 13),
+        "TAB" => ("Tab", 9),
+        "ESC" => ("Escape", 27),
+        "BACKSPACE" => ("Backspace", 8),
+        "DELETE" => ("Delete", 46),
+        "LEFT" => ("ArrowLeft", 37),
+        "UP" => ("ArrowUp", 38),
+        "RIGHT" => ("ArrowRight", 39),
+        "DOWN" => ("ArrowDown", 40),
+        "HOME" => ("Home", 36),
+        "END" => ("End", 35),
+        "PAGEUP" => ("PageUp", 33),
+        "PAGEDOWN" => ("PageDown", 34),
+        _ => return None,
+    })
+}
+impl Request {
+    pub fn permission(&self) -> Permission {
+        match self {
+            Self::Info | Self::Snapshot => Permission::Inspect,
+            Self::Navigate { .. } => Permission::Navigate,
+            Self::Upload { .. } => Permission::Upload,
+            Self::Download { .. } => Permission::Download,
+            _ => Permission::Act,
+        }
+    }
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Info => "browser_info",
+            Self::Snapshot => "browser_snapshot",
+            Self::Navigate { .. } => "browser_navigate",
+            Self::Upload { .. } => "browser_upload",
+            Self::Download { .. } => "browser_download",
+            _ => "browser_action",
+        }
+    }
+    pub fn validate(&self) -> Result<(), AgentError> {
+        match self {
+            Self::Navigate { url } => validate_url(url)?,
+            Self::Download {
+                document,
+                url,
+                path,
+            } => {
+                document.validate()?;
+                validate_url(url)?;
+                if !transfer_path(path) {
+                    return Err(AgentError::Configuration(
+                        "bounded relative download path required",
+                    ));
+                }
+            }
+            Self::Info | Self::Snapshot => {}
+            Self::Click { target } | Self::ScrollIntoView { target } => target.validate()?,
+            Self::Fill { target, text } => {
+                target.validate()?;
+                if text.len() > 16 * 1024 || text.contains('\0') {
+                    return Err(AgentError::Configuration("fill text limit"));
+                }
+            }
+            Self::Select { target, values } => {
+                target.validate()?;
+                if values.len() > 16
+                    || values.iter().any(|v| v.len() > 1024 || v.contains('\0'))
+                    || values
+                        .iter()
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len()
+                        != values.len()
+                {
+                    return Err(AgentError::Configuration(
+                        "bounded unique selection values required",
+                    ));
+                }
+            }
+            Self::Press { target, key } => {
+                target.validate()?;
+                if press_key(key).is_none() {
+                    return Err(AgentError::Configuration("unsupported browser key"));
+                }
+            }
+            Self::Upload { target, path } => {
+                target.validate()?;
+                if !transfer_path(path) {
+                    return Err(AgentError::Configuration(
+                        "bounded relative upload path required",
+                    ));
+                }
+            }
         }
         Ok(())
     }
     pub fn readonly(&self) -> bool {
-        !matches!(self, Self::Navigate { .. })
+        self.permission() == Permission::Inspect
+    }
+    pub fn accepts(&self, reply: &Reply) -> bool {
+        match (self, reply) {
+            (Self::Info, Reply::Info { .. })
+            | (Self::Snapshot, Reply::Snapshot { .. })
+            | (Self::Navigate { .. }, Reply::Navigated { .. }) => true,
+            (Self::Download { path, .. }, Reply::Downloaded { path: actual, .. }) => path == actual,
+            (_, Reply::Applied) => {
+                matches!(self.permission(), Permission::Act | Permission::Upload)
+            }
+            _ => false,
+        }
     }
 }
 pub fn validate_url(value: &str) -> Result<(), AgentError> {
@@ -45,7 +236,7 @@ pub fn validate_url(value: &str) -> Result<(), AgentError> {
         ))
     }
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {
     pub url: String,
@@ -78,6 +269,11 @@ pub struct AxNode {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Applied,
+    Downloaded {
+        path: String,
+        bytes: usize,
+    },
     Info {
         page: Page,
     },
@@ -94,6 +290,14 @@ pub enum Reply {
 impl Reply {
     pub fn validate(&self) -> Result<(), AgentError> {
         let (page, dom, ax) = match self {
+            Self::Applied => return Ok(()),
+            Self::Downloaded { path, bytes } => {
+                return if transfer_path(path) && *bytes <= crate::protocol::FILE_LIMIT {
+                    Ok(())
+                } else {
+                    Err(AgentError::Protocol("invalid downloaded file metadata"))
+                };
+            }
             Self::Info { page } | Self::Navigated { page } => (page, &[][..], &[][..]),
             Self::Snapshot {
                 page,

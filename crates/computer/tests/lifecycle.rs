@@ -25,6 +25,7 @@ struct State {
     fail_desktop: bool,
     fail_browser: bool,
     wrong_browser: bool,
+    wrong_download_path: bool,
     fail_start: bool,
     cancel_exec: bool,
     bad_reply: bool,
@@ -160,6 +161,15 @@ impl Engine for Mock {
                                     accessibility: vec![],
                                     truncated: false,
                                 },
+                                Request::Download { path, .. } => Reply::Downloaded {
+                                    path: if s.wrong_download_path {
+                                        "unexpected".into()
+                                    } else {
+                                        path
+                                    },
+                                    bytes: 0,
+                                },
+                                _ => Reply::Applied,
                             }
                         };
                         GuestValue::Browser { value }
@@ -967,6 +977,247 @@ fn browser_reply_rejects_oversize_data_and_debug_redacts_urls() {
     assert!(
         serde_json::from_value::<Request>(
             json!({"action":"navigate","url":"about:blank","evaluate":"secret"})
+        )
+        .is_err()
+    );
+}
+
+fn browser_target() -> namzu_computer::browser::Target {
+    use namzu_computer::browser::{Document, Target};
+    Target {
+        document: Document {
+            frame_id: "frame".into(),
+            loader_id: "loader".into(),
+            url: "about:blank".into(),
+        },
+        backend_node_id: 7,
+    }
+}
+#[test]
+fn malformed_browser_actions_and_file_paths_are_rejected_before_dispatch() {
+    use namzu_computer::browser::Request;
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    let mut stale = browser_target();
+    stale.backend_node_id = 0;
+    for request in [
+        Request::Click { target: stale },
+        Request::Fill {
+            target: browser_target(),
+            text: "x".repeat(16385),
+        },
+        Request::Select {
+            target: browser_target(),
+            values: vec!["duplicate".into(), "duplicate".into()],
+        },
+        Request::Press {
+            target: browser_target(),
+            key: "arbitrary JS".into(),
+        },
+        Request::Upload {
+            target: browser_target(),
+            path: "../private".into(),
+        },
+        Request::Download {
+            document: browser_target().document,
+            url: "file:///etc/passwd".into(),
+            path: "result".into(),
+        },
+        Request::Download {
+            document: browser_target().document,
+            url: "https://example.com/".into(),
+            path: "/tmp/result".into(),
+        },
+    ] {
+        assert!(computer.browser(request, &ctx()).is_err());
+    }
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(computer.snapshot().pending.is_none());
+}
+#[test]
+fn browser_actions_have_separate_permissions_and_typed_success() {
+    use namzu_computer::browser::{Permission, Reply, Request};
+    let (_root, _mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    for request in [
+        Request::Click {
+            target: browser_target(),
+        },
+        Request::Fill {
+            target: browser_target(),
+            text: "Türkçe metin".into(),
+        },
+        Request::Select {
+            target: browser_target(),
+            values: vec!["b".into()],
+        },
+        Request::Press {
+            target: browser_target(),
+            key: "ENTER".into(),
+        },
+        Request::ScrollIntoView {
+            target: browser_target(),
+        },
+    ] {
+        assert_eq!(request.permission(), Permission::Act);
+        assert!(matches!(
+            computer.browser(request, &ctx()).unwrap(),
+            Reply::Applied
+        ));
+    }
+    let upload = Request::Upload {
+        target: browser_target(),
+        path: "input.bin".into(),
+    };
+    assert_eq!(upload.permission(), Permission::Upload);
+    assert!(matches!(
+        computer.browser(upload, &ctx()).unwrap(),
+        Reply::Applied
+    ));
+    let download = Request::Download {
+        document: browser_target().document,
+        url: "https://example.com/file".into(),
+        path: "output.bin".into(),
+    };
+    assert_eq!(download.permission(), Permission::Download);
+    assert!(matches!(
+        computer.browser(download, &ctx()).unwrap(),
+        Reply::Downloaded { .. }
+    ));
+    assert!(computer.snapshot().pending.is_none());
+}
+#[test]
+fn failed_browser_action_upload_and_download_stop_and_retain_their_exact_fence() {
+    use namzu_computer::browser::Request;
+    for (request, kind) in [
+        (
+            Request::Click {
+                target: browser_target(),
+            },
+            "browser_action",
+        ),
+        (
+            Request::Upload {
+                target: browser_target(),
+                path: "file".into(),
+            },
+            "browser_upload",
+        ),
+        (
+            Request::Download {
+                document: browser_target().document,
+                url: "https://example.com/file".into(),
+                path: "result".into(),
+            },
+            "browser_download",
+        ),
+    ] {
+        let (_root, mock, manager) = setup();
+        let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+        mock.0.lock().unwrap().fail_browser = true;
+        assert!(computer.browser(request, &ctx()).is_err());
+        assert_eq!(computer.snapshot().phase, Phase::Stopped);
+        assert_eq!(computer.snapshot().pending.as_ref().unwrap().kind, kind);
+        mock.0.lock().unwrap().fail_browser = false;
+        computer.start(&ctx()).unwrap();
+        computer.browser(Request::Info, &ctx()).unwrap();
+        assert_eq!(computer.snapshot().pending.as_ref().unwrap().kind, kind);
+        let before = mock.0.lock().unwrap().execs;
+        assert!(
+            computer
+                .browser(
+                    Request::Click {
+                        target: browser_target()
+                    },
+                    &ctx()
+                )
+                .is_err()
+        );
+        assert_eq!(mock.0.lock().unwrap().execs, before);
+    }
+}
+#[test]
+fn cancelled_file_upload_is_not_replayed_and_unexpected_download_path_is_fenced() {
+    use namzu_computer::browser::Request;
+    let (_root, mock, manager) = setup();
+    let mut computer = manager.acquire(browser_spec(), &ctx()).unwrap();
+    mock.0.lock().unwrap().cancel_exec = true;
+    assert!(
+        computer
+            .browser(
+                Request::Upload {
+                    target: browser_target(),
+                    path: "file".into()
+                },
+                &ctx()
+            )
+            .is_err()
+    );
+    assert_eq!(computer.snapshot().phase, Phase::Stopped);
+    assert_eq!(
+        computer.snapshot().pending.as_ref().unwrap().kind,
+        "browser_upload"
+    );
+    computer.acknowledge_uncertain().unwrap();
+    computer.start(&ctx()).unwrap();
+    mock.0.lock().unwrap().wrong_download_path = true;
+    assert!(
+        computer
+            .browser(
+                Request::Download {
+                    document: browser_target().document,
+                    url: "https://example.com/file".into(),
+                    path: "expected".into()
+                },
+                &ctx()
+            )
+            .is_err()
+    );
+    assert_eq!(computer.snapshot().phase, Phase::Stopped);
+    assert_eq!(
+        computer.snapshot().pending.as_ref().unwrap().kind,
+        "browser_download"
+    );
+}
+#[test]
+fn file_metadata_and_action_debug_are_bounded_and_redacted() {
+    use namzu_computer::browser::{Reply, Request};
+    let request = Request::Fill {
+        target: browser_target(),
+        text: "private-value".into(),
+    };
+    assert!(!format!("{request:?}").contains("private-value"));
+    assert!(
+        Reply::Downloaded {
+            path: "../private".into(),
+            bytes: 1
+        }
+        .validate()
+        .is_err()
+    );
+    assert!(
+        Reply::Downloaded {
+            path: "result".into(),
+            bytes: FILE_LIMIT + 1
+        }
+        .validate()
+        .is_err()
+    );
+    assert!(
+        !Request::Download {
+            document: browser_target().document,
+            url: "https://example.com/file".into(),
+            path: "expected".into()
+        }
+        .accepts(&Reply::Downloaded {
+            path: "unexpected".into(),
+            bytes: 0
+        })
+    );
+    assert!(
+        serde_json::from_value::<Request>(
+            json!({"action":"click","target":browser_target(),"evaluate":"evil"})
         )
         .is_err()
     );

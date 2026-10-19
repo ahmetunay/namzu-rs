@@ -5,6 +5,10 @@ use namzu_computer::browser::{
 };
 use serde_json::{Value, json};
 use std::io::{Read, Write};
+#[path = "browser/actions.rs"]
+mod actions;
+#[path = "browser/transfers.rs"]
+mod transfers;
 fn frame(c: &mut Cdp) -> Result<Value> {
     Ok(c.call("Page.getFrameTree", json!({}))?["frameTree"]["frame"].clone())
 }
@@ -161,12 +165,28 @@ fn snapshot(c: &mut Cdp) -> Result<Reply> {
 }
 fn run(request: Request) -> Result<Reply> {
     request.validate()?;
+    let mut control = Cdp::connect_browser()?;
+    control.call(
+        "Browser.setDownloadBehavior",
+        json!({"behavior":"deny","eventsEnabled":true}),
+    )?;
     let mut c = Cdp::connect()?;
     let reply = match request {
         Request::Info => Reply::Info {
             page: page(&mut c)?,
         },
         Request::Snapshot => snapshot(&mut c)?,
+        Request::Download {
+            document,
+            url,
+            path,
+        } => transfers::download(&mut c, &mut control, &document, &url, &path)?,
+        request @ (Request::Click { .. }
+        | Request::Fill { .. }
+        | Request::Select { .. }
+        | Request::Press { .. }
+        | Request::ScrollIntoView { .. }
+        | Request::Upload { .. }) => actions::apply(&mut c, request)?,
         Request::Navigate { url } => {
             c.call("Page.enable", json!({}))?;
             c.call("Page.setLifecycleEventsEnabled", json!({"enabled":true}))?;
@@ -189,8 +209,10 @@ fn run(request: Request) -> Result<Reply> {
 fn main() {
     let result = (|| -> Result<Reply> {
         let mut bytes = Vec::new();
-        std::io::stdin().take(16385).read_to_end(&mut bytes)?;
-        if bytes.len() > 16384 {
+        std::io::stdin()
+            .take((128 * 1024 + 1) as u64)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 128 * 1024 {
             return Err("input limit".into());
         }
         run(serde_json::from_slice(&bytes)?)
