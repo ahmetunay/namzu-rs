@@ -372,6 +372,13 @@ fn search(
     Ok(())
 }
 impl Tools for TerminalTools {
+    fn validate(&mut self, call: &ToolCall, context: &TurnContext) -> Result<(), AgentError> {
+        context.remaining()?;
+        if self.policy.admits(&call.name) {
+            self.files.validate(call, context)?;
+        }
+        Ok(())
+    }
     fn definitions(&self) -> Vec<ToolDefinition> {
         let mut list = self.files.definitions();
         list.push(Self::definition("search_files","Search a literal string in workspace UTF-8 files; bounded traversal, skips symlinks and generated directories.",json!({"path":{"type":"string"},"query":{"type":"string"}}),&["query"]));

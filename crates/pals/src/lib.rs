@@ -24,6 +24,10 @@ pub use team::{Job, Team, TeamControl};
 static SCOPES: AtomicU64 = AtomicU64::new(1);
 const READ_ONLY: &[&str] = &[
     "read_file",
+    "inspect_file",
+    "read_file_chunk",
+    "read_document",
+    "read_image",
     "list_files",
     "search_files",
     "diff_file",

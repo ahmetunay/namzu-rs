@@ -52,7 +52,7 @@ Görseller de varsayılan 4 MiB konuşma bütçesinden tüketir; dolunca yeni sa
 OpenAI uyumlu Chat Completions sürücüsü `image_url`, native Codex Responses
 sürücüsü `input_image` üretir. Wire üzerinde bütün function sonuçları tamamlanır,
 ardından görüntü ayrı user multipart verisi olarak eklenir; kaynak çağrı ID'si
-ve açık “untrusted screenshot” açıklaması bulunur. Görsel veya sayfa içeriği
+ve açık “untrusted image” açıklaması bulunur. Görsel veya sayfa içeriği
 system talimatına dönüştürülmez. Tool sonucunun metnine base64 gömülmez.
 Modelin bu içerik türünü desteklemesi gerekir; sessiz text fallback yoktur.
 Bu aşamanın kabulünde canlı görsel model veya abonelik kotası kullanılmadı.

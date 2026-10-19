@@ -588,6 +588,6 @@ fn batched_tool_images_follow_all_function_outputs_without_instruction_promotion
         wire[4]["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("Untrusted screenshot")
+            .contains("Untrusted image")
     );
 }

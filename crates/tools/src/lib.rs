@@ -1,4 +1,5 @@
 //! Filesystem capabilities and explicitly granted host terminal tools.
+pub mod content;
 pub mod process;
 mod terminal;
 use cap_std::{
@@ -21,12 +22,15 @@ static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 pub struct FileTools {
     root: Dir,
+    content: content::ContentReader,
     writable: bool,
 }
 impl FileTools {
     pub fn new(root: impl AsRef<Path>, writable: bool) -> std::io::Result<Self> {
+        let root = Dir::open_ambient_dir(root, ambient_authority())?;
         Ok(Self {
-            root: Dir::open_ambient_dir(root, ambient_authority())?,
+            content: content::ContentReader::from_dir(root.try_clone()?)?,
+            root,
             writable,
         })
     }
@@ -171,6 +175,13 @@ fn valid_path(path: &str) -> Result<(), &'static str> {
 }
 
 impl Tools for FileTools {
+    fn validate(&mut self, call: &ToolCall, context: &TurnContext) -> Result<(), AgentError> {
+        context.remaining()?;
+        if content::CONTENT_NAMES.contains(&call.name.as_str()) {
+            content::validate(call)?;
+        }
+        Ok(())
+    }
     fn definitions(&self) -> Vec<ToolDefinition> {
         let mut definitions = vec![];
         for (name, description) in [
@@ -185,6 +196,7 @@ impl Tools for FileTools {
         ] {
             definitions.push(ToolDefinition { name: name.into(), description: description.into(), parameters: json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}) });
         }
+        definitions.extend(content::definitions());
         if self.writable {
             definitions.push(ToolDefinition { name: "write_file".into(), description: "Atomically replace a workspace file with UTF-8 text up to 64 KiB. Parent directory must exist.".into(), parameters: json!({"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":false}) });
         }
@@ -192,6 +204,14 @@ impl Tools for FileTools {
     }
     fn call(&mut self, call: &ToolCall, context: &TurnContext) -> Result<ToolResult, AgentError> {
         context.remaining()?;
+        if content::CONTENT_NAMES.contains(&call.name.as_str()) {
+            let result = self.content.call(call, context);
+            context.remaining()?;
+            return match result {
+                Err(AgentError::Configuration(message)) => Ok(ToolResult::error(message)),
+                other => other,
+            };
+        }
         let result = match self.execute(call, context) {
             Ok(text) => ToolResult::ok(text),
             Err(error) => ToolResult::error(error),

@@ -37,15 +37,15 @@ pub(crate) fn image(frame: &mut Frame<'_>, app: &App, pending: bool) {
     let area = frame.area();
     frame.render_widget(Clear, area);
     let title = if pending {
-        "Screenshot · F7/Esc back · approval pending"
+        "Image preview · F7/Esc back · approval pending"
     } else {
-        "Screenshot · F7/Esc back"
+        "Image preview · F7/Esc back"
     };
     let block = Block::default().title(title).borders(Borders::ALL);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let Some(image) = &app.preview else {
-        frame.render_widget(Paragraph::new("No screenshot in this conversation"), inner);
+        frame.render_widget(Paragraph::new("No image in this conversation"), inner);
         return;
     };
     if inner.width == 0 || inner.height < 2 {
@@ -53,7 +53,7 @@ pub(crate) fn image(frame: &mut Frame<'_>, app: &App, pending: bool) {
     }
     frame.render_widget(
         Paragraph::new(format!(
-            "Owned guest · {}×{} pixels · scaled terminal preview",
+            "{}×{} pixels · scaled terminal preview",
             image.width, image.height
         )),
         ratatui::layout::Rect::new(inner.x, inner.y, inner.width, 1),

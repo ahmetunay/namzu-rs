@@ -62,6 +62,10 @@ impl EventSink for ChannelEvents {
             call.name.as_str(),
             "read_file"
                 | "list_files"
+                | "inspect_file"
+                | "read_file_chunk"
+                | "read_document"
+                | "read_image"
                 | "search_files"
                 | "diff_file"
                 | "computer_info"

@@ -1366,11 +1366,14 @@ dependencies = [
 name = "namzu-tools"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cap-std",
  "libc",
  "namzu-core",
+ "png",
  "serde",
  "serde_json",
+ "sha2",
  "similar",
  "tempfile",
 ]

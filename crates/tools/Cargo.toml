@@ -11,6 +11,9 @@ serde.workspace = true
 serde_json.workspace = true
 cap-std = "3"
 similar = "2"
+base64 = "0.22"
+png = "0.17"
+sha2 = "0.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

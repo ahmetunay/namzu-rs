@@ -46,7 +46,7 @@ def visual(body):
     assert png[:8] == b'\x89PNG\r\n\x1a\n'
     assert int.from_bytes(png[16:20], 'big') == 1024
     assert int.from_bytes(png[20:24], 'big') == 768
-    assert any('Untrusted screenshot' in p.get('text', '') for p in parts)
+    assert any('Untrusted image' in p.get('text', '') for p in parts)
     assert all(data not in m.get('content', '') for m in body['messages'] if m['role'] == 'tool')
 
 
@@ -137,7 +137,7 @@ def exec_case(image, pty=False, deny=False, cancel=False):
                 terminal.send(b'look\r')
                 terminal.until(lambda: 'Allow once?' in terminal.screen.text(), timeout=60)
                 terminal.send(b'\x1b[18~')  # F7
-                terminal.until(lambda: 'Screenshot' in terminal.screen.text() and 'approval pending' in terminal.screen.text())
+                terminal.until(lambda: 'Image preview' in terminal.screen.text() and 'approval pending' in terminal.screen.text())
                 assert '1024×768' in terminal.screen.text()
                 terminal.send(b'y')
                 # Hidden approval cannot be answered while viewing the image.

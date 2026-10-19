@@ -42,7 +42,8 @@ Gerçek model için API anahtarını kendin seçtiğin ortam değişkenine koy:
 ```
 
 `--allow-write` verilirse çalışma klasöründeki dosyalara yazabilir. Varsayılan
-araçlar `read_file`, `list_files`, `search_files` ve `diff_file`.
+araçlar `read_file`, `list_files`, `search_files`, `diff_file` ve 5.1 ile
+`inspect_file`, `read_file_chunk`, `read_document`, `read_image`.
 `--allow-write` ayrıca `write_file` ve tek eşleşmeli `apply_patch` açar.
 `--allow-shell` host `/bin/sh` çalıştırır: bu izin çalışma klasörü dışındaki
 dosyalara ve ağa da erişim sağlar, OS sandbox'ı değildir. `--tool-allow` araç
@@ -60,7 +61,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 
 - Varsayılan turn bütçesi: 300 saniye, 64 sağlayıcı adımı, 128 araç çağrısı,
   4 MiB konuşma verisi (görseller dahil). CLI süreyi 1–86400 saniyeyle sınırlar.
-- Dosya okuma/yazma 64 KiB, listeleme 512 girdiye sınırlıdır. Mutlak ve `..`
+- Eski tam dosya okuma/yazma 64 KiB, listeleme 512 girdiye sınırlıdır. 5.1
+  parçalı okumada 16 MiB, JSON/JSONL kaynağında 2 MiB destekler;
+  [ayrıntılar](docs/FILES.md). Mutlak ve `..`
   yollar reddedilir. `cap-std` dosya erişimini kök dizin yeteneğiyle sınırlar;
   bu bir süreç/Docker sandbox'ı değildir.
 - Ctrl-C iptali etki sınırlarında denetlenir. HTTP başlık/gövde/SSE beklemeleri async transport
@@ -76,8 +79,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   CLI sözdizimi hataları Clap tarafından stderr'e yazılır (exit 2).
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
-- TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.3
-  tamamlandı. Model/TUI görsel entegrasyonu 4.4 sırada.
+- TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
+  tamamlandı. Gelişmiş dosya/ek araçları 5.1 tamam; sırada ses sürücüleri 5.2 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -392,3 +395,10 @@ aktarımı çalışan browser oturumunu korur. [Eylem/dosya kullanımı ve kabul
 kullanılabilir. Görsel izinler açıkça verilir; TUI F7 ile son PNG'yi gösterir ve
 etki araçları tek kullanımlık onay ister. Kullanım, izinler, model görüntü
 sözleşmesi, kalıcı Pal ve temizlik: [VISUAL-AGENT.md](docs/VISUAL-AGENT.md).
+
+## Gelişmiş dosya ve ek araçları
+
+5.1: SHA-256 kimliğiyle büyük UTF-8 dosyalarını parça parça oku, JSON/JSONL
+alanlarını ve kayıtlarını seç, PNG dosyasını modele gerçek görsel olarak aktar.
+Normal TUI ve Pal TUI'de F7/özel geçmiş aynı ek yolunu kullanır.
+[Kullanım, SDK ve sınırlar](docs/FILES.md).

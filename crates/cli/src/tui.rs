@@ -293,7 +293,7 @@ impl Host for AgentHost {
                     image,
                 } => entries.push(HistoryEntry {
                     label: "Image",
-                    content: format!("Screenshot {}×{} · F7 preview", image.width, image.height),
+                    content: format!("Image {}×{} · F7 preview", image.width, image.height),
                     tool_id: Some(tool_call_id),
                     image: Some(image),
                 }),
