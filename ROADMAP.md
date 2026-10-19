@@ -63,7 +63,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
-| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.2 tamam; 5.3–5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
+| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.3 tamam; 5.4–5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
@@ -181,7 +181,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   sürücüleri ve payload içermeyen olaylar; OpenAI uyumlu iptal edilebilir HTTP,
   açık CLI ve private/create-new WAV çıktısı. 23 yeni test, toplam 473; sekiz
   gerçek release CLI/HTTP kabulü. [Kullanım ve sınırlar](docs/AUDIO.md).
-- **5.3** — LSP yaşam döngüsü, diagnostics, tanım/referans ve düzenleme uygulama.
+- **5.3 — tamam** — Bounded Unix stdio LSP, initialize/sync/shutdown, UTF-16,
+  push/pull diagnostics, definition/references ve hash/version bağlı tek dosya
+  edit planı/atomik apply. Açık CLI, 22 yeni test, toplam 495 ve sekiz release
+  CLI/subprocess kabul grubu. [Kullanım ve sınırlar](docs/LSP.md).
 - **5.4** — Sandbox politikaları, dosya/süreç/ağ sınırları ve farklı çalışma ortamları;
 2.5'teki temel container altyapısını genişletme.
 - **5.5** — Yetenek kaydı, config/izin ve terminal entegrasyonu.
@@ -227,7 +230,14 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 5.3 — LSP yaşam döngüsü ve kod zekâsı araçları.**
+**Sıradaki iş: 5.4 — sandbox politikaları ve farklı çalışma ortamları.**
+5.3 tamamlandı: explicit host server, bounded framing/I/O, process-group
+cleanup, belge kimliği/UTF-16, typed sonuçlar ve preview/ayrı write izni.
+Çok dosyalı/resource edit ve otomatik server apply reddedilir; TUI/Pal tool
+entegrasyonu 5.5'tedir. Canlı model çağrısı 0; gerçek bağımsız yerel LSP
+fixture'ı kullanıldı, rust-analyzer bu ortamda kurulu değildi.
+[Kabul ve SDK/CLI kullanımı](docs/LSP.md).
+
 5.2 tamamlandı: format/süre/byte/UTF-8 sınırları, typed/redakte SDK olayları,
 HTTP iptal/deadline, no replay, canonical WAV ve unknown-size HTTP WAV desteği.
 Mikrofon/playback ve TUI/Pal ses araçları bu aşamada yok; capability entegrasyonu

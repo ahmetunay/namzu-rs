@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 namzu-core.workspace = true
+namzu-lsp.workspace = true
 namzu-audio.workspace = true
 namzu-mcp.workspace = true
 namzu-tools.workspace = true

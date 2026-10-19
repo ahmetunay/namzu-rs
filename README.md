@@ -80,7 +80,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
-  tamamlandı. Gelişmiş dosya/ek araçları 5.1 ve ses SDK/sürücüleri 5.2 tamam; sırada LSP 5.3 var.
+  tamamlandı. Gelişmiş dosya/ek 5.1, ses SDK/sürücüleri 5.2 ve LSP 5.3 tamam; sırada sandbox 5.4 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -409,3 +409,10 @@ Normal TUI ve Pal TUI'de F7/özel geçmiş aynı ek yolunu kullanır.
 açık `audio inspect/transcribe/synthesize` komutları. Kaynak/çıktı en çok 12 MiB
 ve 60 saniye; çıktı yeni private WAV dosyasıdır. Mikrofon/playback ve TUI'den
 otomatik ses aktarımı bu aşamada yoktur. [Kullanım ve kabul](docs/AUDIO.md).
+
+## LSP ve kod zekâsı
+
+5.3: açık seçilen Unix stdio LSP sunucusu, typed diagnostics, tanım/referans
+bulma, rename önizlemesi ve hash/sürüm bağlı tek dosya apply. `lsp` komutları
+model kullanmaz; sunucu host programıdır, sandbox değildir.
+[SDK, CLI, izinler ve kabul sınırları](docs/LSP.md).

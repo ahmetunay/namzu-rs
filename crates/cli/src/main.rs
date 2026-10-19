@@ -3,6 +3,7 @@ mod benchmark;
 mod computer_runtime;
 mod config;
 mod execute;
+mod lsp;
 mod mcp;
 mod mcp_runtime;
 mod pals;
@@ -22,6 +23,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Explicit trusted LSP server and hash-bound document edits.
+    Lsp(Box<lsp::LspArgs>),
     /// Explicit bounded WAV inspection, speech-to-text and text-to-speech.
     Audio(Box<audio::AudioArgs>),
     /// Offline filesystem/tool replay. No model calls or credentials.
@@ -302,6 +305,24 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Lsp(args) => {
+            return match lsp::run(*args, cancellation) {
+                Ok(value) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"ok","output":value})
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Audio(args) => {
             return match audio::run(*args, cancellation) {
                 Ok(value) => {
