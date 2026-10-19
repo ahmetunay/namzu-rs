@@ -29,6 +29,8 @@ pub struct ComputerSpec {
     pub desktop: Option<desktop::ScreenConfig>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub browser: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<namzu_sandbox::Policy>,
 }
 impl ComputerSpec {
     pub fn new(image: impl Into<String>) -> Self {
@@ -39,9 +41,32 @@ impl ComputerSpec {
             pids: 64,
             desktop: None,
             browser: false,
+            sandbox: None,
         }
     }
+    pub fn with_sandbox(mut self, policy: namzu_sandbox::Policy) -> Result<Self, AgentError> {
+        policy.validate()?;
+        self.memory_bytes = policy.limits.memory_bytes;
+        self.cpu_millis = policy.limits.cpu_millis;
+        self.pids = policy.limits.pids;
+        self.sandbox = Some(policy);
+        self.validate()?;
+        Ok(self)
+    }
     pub fn validate(&self) -> Result<(), AgentError> {
+        if let Some(p) = &self.sandbox {
+            p.validate()?;
+            if self.memory_bytes != p.limits.memory_bytes
+                || self.cpu_millis != p.limits.cpu_millis
+                || self.pids != p.limits.pids
+                || self.desktop.is_some()
+                || self.browser
+            {
+                return Err(AgentError::Configuration(
+                    "sandbox policy/resource mismatch; visual profiles not supported in sandbox v1",
+                ));
+            }
+        }
         if self.browser
             && (self.desktop.is_none() || self.memory_bytes < 512 * 1024 * 1024 || self.pids < 128)
         {
@@ -106,7 +131,7 @@ fn identity(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
 }
 pub fn labels(record: &ComputerRecord) -> BTreeMap<String, String> {
-    BTreeMap::from([
+    let mut labels = BTreeMap::from([
         ("io.namzu.computer.scope".into(), record.scope.clone()),
         ("io.namzu.computer.owner".into(), record.owner.clone()),
         ("io.namzu.computer.pal".into(), record.pal_id.clone()),
@@ -114,7 +139,15 @@ pub fn labels(record: &ComputerRecord) -> BTreeMap<String, String> {
             "io.namzu.computer.generation".into(),
             record.generation.to_string(),
         ),
-    ])
+    ]);
+    if let Some(policy) = &record.spec.sandbox {
+        // Records are validated before resource operations; invalid policies never get a valid label.
+        labels.insert(
+            "io.namzu.computer.policy".into(),
+            policy.fingerprint().unwrap_or_else(|_| "invalid".into()),
+        );
+    }
+    labels
 }
 fn random_scope() -> Result<String, AgentError> {
     let mut bytes = [0u8; 16];
@@ -549,6 +582,23 @@ impl<E: Engine> Computer<'_, E> {
                 "computer is not running; no host fallback",
             ));
         }
+        if let Some(policy) = &self.record.spec.sandbox {
+            match &request {
+                GuestRequest::Write { base64, .. } => {
+                    let bytes = STANDARD
+                        .decode(base64)
+                        .map_err(|_| AgentError::Configuration("invalid file transfer"))?;
+                    policy.check_write(bytes.len())?;
+                }
+                GuestRequest::Shell { .. } => policy.check_command()?,
+                GuestRequest::Desktop { .. } | GuestRequest::Browser { .. } => {
+                    return Err(AgentError::Configuration(
+                        "visual sandbox profile unsupported",
+                    ));
+                }
+                _ => (),
+            }
+        }
         let info = self
             .manager
             .owned_container(&self.record, ctx)?
@@ -655,7 +705,12 @@ impl<E: Engine> Computer<'_, E> {
                                         ["exited", "timeout", "output_limit"]
                                             .contains(&output.status.as_str())
                                             && output.stdout.len() + output.stderr.len()
-                                                <= 3 * FILE_LIMIT
+                                                <= 3 * self
+                                                    .record
+                                                    .spec
+                                                    .sandbox
+                                                    .as_ref()
+                                                    .map_or(FILE_LIMIT, |p| p.limits.output_bytes)
                                     }
                                     (
                                         "desktop_info" | "desktop_screenshot" | "desktop_input",
@@ -702,7 +757,13 @@ impl<E: Engine> Computer<'_, E> {
                     ));
                 }
                 let pending = self.record.pending.clone();
-                self.record.pending = previous;
+                self.record.pending = if self.record.spec.sandbox.is_some()
+                    && matches!(&result, Ok(GuestValue::Shell { output }) if output.status != "exited")
+                {
+                    pending.clone()
+                } else {
+                    previous
+                };
                 if let Err(error) = self.manager.save(&self.record) {
                     self.record.pending = pending;
                     self.abort_remote()?;
@@ -784,7 +845,22 @@ impl<E: Engine> Computer<'_, E> {
         {
             return Err(AgentError::Configuration("invalid guest shell request"));
         }
-        let timeout_ms = timeout.min(ctx.remaining()?).as_millis().min(300_000) as u64;
+        let (policy_timeout, output_limit) =
+            self.record
+                .spec
+                .sandbox
+                .as_ref()
+                .map_or((Duration::from_secs(300), FILE_LIMIT), |p| {
+                    (
+                        Duration::from_secs(p.limits.timeout_seconds),
+                        p.limits.output_bytes,
+                    )
+                });
+        let timeout_ms = timeout
+            .min(policy_timeout)
+            .min(ctx.remaining()?)
+            .as_millis()
+            .min(300_000) as u64;
         if timeout_ms == 0 {
             return Err(AgentError::Timeout);
         }
@@ -793,6 +869,7 @@ impl<E: Engine> Computer<'_, E> {
                 command: command.into(),
                 cwd: cwd.into(),
                 timeout_ms,
+                output_limit,
             },
             ctx,
         )?

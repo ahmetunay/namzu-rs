@@ -179,10 +179,12 @@ fn files(request: GuestRequest) -> Result<GuestValue, String> {
             command,
             cwd,
             timeout_ms,
+            output_limit,
         } => {
             if command.is_empty()
                 || command.len() > FILE_LIMIT
                 || !valid_path(&cwd)
+                || !(1..=FILE_LIMIT).contains(&output_limit)
                 || !(1..=300_000).contains(&timeout_ms)
             {
                 return Err("invalid guest shell request".into());
@@ -225,7 +227,7 @@ fn files(request: GuestRequest) -> Result<GuestValue, String> {
                     cwd,
                     env,
                     timeout: Duration::from_millis(timeout_ms),
-                    output_limit: FILE_LIMIT,
+                    output_limit,
                 },
                 &context,
             );

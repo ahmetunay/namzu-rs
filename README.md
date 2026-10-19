@@ -80,7 +80,7 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
 - Kayıp eski benchmark dosyaları bu ortamda yok; onlarla uyum henüz doğrulanmadı.
   Yerel HTTP fixture testi gerçek CLI/sağlayıcı/araç zincirini sınar.
 - TUI 1.1–1.4, Pals 2.1–2.6, MCP 3.1–3.8 ve bilgisayar/tarayıcı 4.1–4.4
-  tamamlandı. Gelişmiş dosya/ek 5.1, ses SDK/sürücüleri 5.2 ve LSP 5.3 tamam; sırada sandbox 5.4 var.
+  tamamlandı. Gelişmiş dosya/ek 5.1, ses SDK/sürücüleri 5.2, LSP 5.3 ve Docker sandbox 5.4 tamam; sırada yetenek entegrasyonu 5.5 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
@@ -416,3 +416,11 @@ otomatik ses aktarımı bu aşamada yoktur. [Kullanım ve kabul](docs/AUDIO.md).
 bulma, rename önizlemesi ve hash/sürüm bağlı tek dosya apply. `lsp` komutları
 model kullanmaz; sunucu host programıdır, sandbox değildir.
 [SDK, CLI, izinler ve kabul sınırları](docs/LSP.md).
+
+## Sandbox politikaları
+
+5.4: bağımsız `namzu-sandbox` SDK, inspect/readonly/build profilleri ve açık
+`sandbox policy/check/run/read/list/show/read-retained/cleanup` komutları var.
+Owned Docker üzerinde dosya/süreç/ağ sınırları uygulanır; native backend açıkça
+reddedilir, host fallback yoktur. Normal exec/TUI/Pal capability entegrasyonu
+5.5'tedir. [Kullanım, kabul ve sınırlar](docs/SANDBOX.md).

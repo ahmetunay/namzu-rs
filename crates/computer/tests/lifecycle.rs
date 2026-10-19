@@ -59,10 +59,49 @@ fn info(r: &ComputerRecord) -> ContainerInfo {
             kind: "volume".into(),
             name: r.volume.clone(),
             destination: "/workspace".into(),
+            read_write: r.spec.sandbox.as_ref().is_none_or(|p| p.writable()),
         }],
         binds: vec![],
         devices: vec![],
         restart: "no".into(),
+        cap_add: vec![],
+        pid_mode: String::new(),
+        ipc_mode: "private".into(),
+        cgroupns_mode: "private".into(),
+        tmpfs: BTreeMap::from([(
+            "/tmp".into(),
+            namzu_computer::engine::scratch_options(&r.spec)[5..].into(),
+        )]),
+        ulimits: {
+            let mut limits = vec![
+                namzu_computer::engine::Ulimit {
+                    name: "core".into(),
+                    soft: 0,
+                    hard: 0,
+                },
+                namzu_computer::engine::Ulimit {
+                    name: "nofile".into(),
+                    soft: r
+                        .spec
+                        .sandbox
+                        .as_ref()
+                        .map_or(256, |p| u64::from(p.limits.open_files)),
+                    hard: r
+                        .spec
+                        .sandbox
+                        .as_ref()
+                        .map_or(256, |p| u64::from(p.limits.open_files)),
+                },
+            ];
+            if let Some(p) = &r.spec.sandbox {
+                limits.push(namzu_computer::engine::Ulimit {
+                    name: "fsize".into(),
+                    soft: p.limits.file_bytes,
+                    hard: p.limits.file_bytes,
+                });
+            }
+            limits
+        },
     }
 }
 impl Engine for Mock {
@@ -1371,4 +1410,149 @@ fn invalid_visual_in_agent_batch_prevents_prior_write() {
     let state = mock.0.lock().unwrap();
     assert_eq!(state.execs, before);
     assert!(!state.files.contains_key("effect"));
+}
+
+#[test]
+fn sandbox_denials_have_no_effect_or_pending_fence() {
+    let (_root, mock, manager) = setup();
+    let mut computer = manager
+        .acquire(
+            spec()
+                .with_sandbox(namzu_sandbox::Policy::inspect())
+                .unwrap(),
+            &ctx(),
+        )
+        .unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    assert!(computer.upload("denied", b"x", &ctx()).is_err());
+    assert!(
+        computer
+            .shell("touch denied", ".", Duration::from_secs(1), &ctx())
+            .is_err()
+    );
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(computer.snapshot().pending.is_none());
+    let policy = GuestPolicy {
+        allow_write: true,
+        allow_shell: true,
+        ..GuestPolicy::default()
+    };
+    let tools = GuestTools::new(computer, policy);
+    assert!(
+        tools
+            .definitions()
+            .iter()
+            .all(|d| d.name != "write_file" && d.name != "shell")
+    );
+}
+#[test]
+fn sandbox_batch_preflight_checks_policy_file_limit() {
+    let (_root, mock, manager) = setup();
+    let mut p = namzu_sandbox::Policy::build();
+    p.limits.file_bytes = 1024;
+    let computer = manager
+        .acquire(spec().with_sandbox(p).unwrap(), &ctx())
+        .unwrap();
+    let before = mock.0.lock().unwrap().execs;
+    let mut tools = GuestTools::new(
+        computer,
+        GuestPolicy {
+            allow_write: true,
+            ..GuestPolicy::default()
+        },
+    );
+    let call = ToolCall {
+        id: "oversize".into(),
+        name: "write_file".into(),
+        arguments: json!({"path":"x","content":"x".repeat(1025)}),
+    };
+    assert!(tools.validate(&call, &ctx()).is_err());
+    assert_eq!(mock.0.lock().unwrap().execs, before);
+    assert!(
+        tools
+            .computer_mut()
+            .upload("x", &vec![0; 1025], &ctx())
+            .is_err()
+    );
+    tools.computer_mut().upload("ok", b"ok", &ctx()).unwrap();
+    assert_eq!(tools.computer_mut().download("ok", &ctx()).unwrap(), b"ok");
+}
+#[test]
+fn sandbox_policy_pins_resources_and_ownership() {
+    let (_root, mock, manager) = setup();
+    let mut s = spec().with_sandbox(namzu_sandbox::Policy::build()).unwrap();
+    s.memory_bytes *= 2;
+    assert!(s.validate().is_err());
+    s.memory_bytes /= 2;
+    let computer = manager.acquire(s, &ctx()).unwrap();
+    let record = computer.snapshot().clone();
+    assert!(labels(&record).contains_key("io.namzu.computer.policy"));
+    let args = namzu_computer::engine::create_arguments(&record);
+    assert!(args.iter().any(|v| v == "--ulimit=fsize=16777216:16777216"));
+    drop(computer);
+    assert!(mock.0.lock().unwrap().container.is_none());
+    let mut legacy = spec();
+    legacy.sandbox = None;
+    assert!(!serde_json::to_string(&legacy).unwrap().contains("sandbox"));
+    assert!(
+        legacy
+            .with_sandbox({
+                let mut p = namzu_sandbox::Policy::inspect();
+                p.backend = namzu_sandbox::Backend::Native;
+                p
+            })
+            .is_err()
+    );
+}
+#[test]
+fn sandbox_rejects_live_confinement_drift() {
+    for field in ["mount", "caps", "pid", "ipc", "cgroup", "tmpfs", "fsize"] {
+        let (_root, mock, manager) = setup();
+        let mut computer = manager
+            .acquire(
+                spec()
+                    .with_sandbox(namzu_sandbox::Policy::readonly())
+                    .unwrap(),
+                &ctx(),
+            )
+            .unwrap();
+        {
+            let mut state = mock.0.lock().unwrap();
+            let info = state.container.as_mut().unwrap();
+            match field {
+                "mount" => info.mounts[0].read_write = true,
+                "caps" => info.cap_add.push("SYS_ADMIN".into()),
+                "pid" => info.pid_mode = "host".into(),
+                "ipc" => info.ipc_mode = "host".into(),
+                "cgroup" => info.cgroupns_mode = "host".into(),
+                "tmpfs" => {
+                    info.tmpfs.insert("/tmp".into(), "rw,exec".into());
+                }
+                "fsize" => info.ulimits.retain(|l| l.name != "fsize"),
+                _ => unreachable!(),
+            }
+        }
+        let before = mock.0.lock().unwrap().execs;
+        assert!(computer.list(".", &ctx()).is_err(), "{field}");
+        assert_eq!(mock.0.lock().unwrap().execs, before);
+    }
+}
+#[test]
+fn guest_output_budget_preserves_legacy_wire_default() {
+    let bytes = br#"{"op":"shell","command":"true","cwd":".","timeout_ms":1000}"#;
+    let request: GuestRequest = serde_json::from_slice(bytes).unwrap();
+    assert_eq!(
+        serde_json::to_value(&request).unwrap().get("output_limit"),
+        None
+    );
+    let mut value = serde_json::to_value(&request).unwrap();
+    value["output_limit"] = 1024.into();
+    let request: GuestRequest = serde_json::from_value(value).unwrap();
+    assert!(matches!(
+        request,
+        GuestRequest::Shell {
+            output_limit: 1024,
+            ..
+        }
+    ));
 }

@@ -31,6 +31,11 @@ pub enum GuestRequest {
         command: String,
         cwd: String,
         timeout_ms: u64,
+        #[serde(
+            default = "default_output_limit",
+            skip_serializing_if = "is_default_output_limit"
+        )]
+        output_limit: usize,
     },
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,4 +63,11 @@ pub fn valid_path(path: &str) -> bool {
         && Path::new(path)
             .components()
             .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
+pub fn default_output_limit() -> usize {
+    FILE_LIMIT
+}
+fn is_default_output_limit(value: &usize) -> bool {
+    *value == FILE_LIMIT
 }

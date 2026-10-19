@@ -69,6 +69,9 @@ struct Bridge<'a> {
 }
 impl Computer<'_, Docker> {
     fn check_mcp(&self, ctx: &TurnContext) -> Result<String, AgentError> {
+        if let Some(policy) = &self.record.spec.sandbox {
+            policy.check_command()?;
+        }
         ctx.remaining()?;
         if self.record.phase != Phase::Running
             || self

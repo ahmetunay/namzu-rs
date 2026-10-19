@@ -1275,6 +1275,7 @@ dependencies = [
  "namzu-mcp",
  "namzu-pals",
  "namzu-provider",
+ "namzu-sandbox",
  "namzu-session",
  "namzu-tools",
  "namzu-tui",
@@ -1293,6 +1294,7 @@ dependencies = [
  "libc",
  "namzu-core",
  "namzu-mcp",
+ "namzu-sandbox",
  "namzu-session",
  "namzu-tools",
  "png",
@@ -1377,6 +1379,16 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "namzu-sandbox"
+version = "0.1.0"
+dependencies = [
+ "namzu-core",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

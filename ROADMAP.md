@@ -63,7 +63,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 2 | Alt ajanlar / Pals | 2.1–2.6 tamam | Paralel ekip, mesaj işleme, sahip olunan Pal bilgisayarları |
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
-| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.3 tamam; 5.4–5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
+| 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.4 tamam; 5.5 sırada | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | OpenAI uyumlu HTTP ve Codex sürücüleri var | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
@@ -185,8 +185,10 @@ model/hesap kotası tüketmez. Her 3.x ayrı commit ve GitHub yedeğidir.
   push/pull diagnostics, definition/references ve hash/version bağlı tek dosya
   edit planı/atomik apply. Açık CLI, 22 yeni test, toplam 495 ve sekiz release
   CLI/subprocess kabul grubu. [Kullanım ve sınırlar](docs/LSP.md).
-- **5.4** — Sandbox politikaları, dosya/süreç/ağ sınırları ve farklı çalışma ortamları;
-2.5'teki temel container altyapısını genişletme.
+- **5.4 — tamam** — Strict/hash-bound sandbox SDK, inspect/readonly/build profilleri,
+  RO/RW owned Docker workspace, offline ağ, fsize/nofile/tmpfs ve RAM/CPU/PID
+  sınırları; açık CLI, timeout/output fence ve recovery. Native/remote/visual
+  policy backend'leri desteklenmez; host fallback yok. [Kabul ve sınırlar](docs/SANDBOX.md).
 - **5.5** — Yetenek kaydı, config/izin ve terminal entegrasyonu.
 
 Kabul: dosya/format sınırları, gerçek yerel LSP fixture'ı, izinsiz erişimin reddi.
@@ -230,7 +232,13 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 5.4 — sandbox politikaları ve farklı çalışma ortamları.**
+**Sıradaki iş: 5.5 — yetenek kaydı, config/izin ve terminal entegrasyonu.**
+5.4 tamamlandı: ayrı politika SDK ve açık sandbox CLI, gerçek Docker sınır
+kontrolleri, policy kimliğine bağlı owned resource doğrulaması ve belirsiz işte
+stop/retain/no replay. 503 Rust testi; 14 Docker SDK + 8 CLI kabul grubu ve
+15 mevcut Docker regresyon kontrolü, fmt/Clippy/release geçti. Normal exec/TUI/Pal entegrasyonu 5.5'tedir; native sandbox
+henüz uygulanmadı. Canlı model çağrısı 0. [Ayrıntılar](docs/SANDBOX.md).
+
 5.3 tamamlandı: explicit host server, bounded framing/I/O, process-group
 cleanup, belge kimliği/UTF-16, typed sonuçlar ve preview/ayrı write izni.
 Çok dosyalı/resource edit ve otomatik server apply reddedilir; TUI/Pal tool

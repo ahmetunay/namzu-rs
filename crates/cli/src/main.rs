@@ -7,6 +7,7 @@ mod lsp;
 mod mcp;
 mod mcp_runtime;
 mod pals;
+mod sandbox;
 mod tui;
 use clap::{Parser, Subcommand};
 use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn};
@@ -23,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Explicit owned Docker sandbox policies and bounded offline operations.
+    Sandbox(Box<sandbox::SandboxArgs>),
     /// Explicit trusted LSP server and hash-bound document edits.
     Lsp(Box<lsp::LspArgs>),
     /// Explicit bounded WAV inspection, speech-to-text and text-to-speech.
@@ -305,6 +308,33 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, result) = match cli.command {
+        Command::Sandbox(args) => {
+            return match sandbox::run(*args, cancellation) {
+                Ok(value) => {
+                    let failed = value.get("error").is_some_and(|v| !v.is_null())
+                        || value.get("result").is_some_and(|r| {
+                            r.get("status").is_some_and(|s| s != "exited")
+                                || r.get("exit_code").is_some_and(|c| c != 0)
+                        });
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":if failed {"error"}else{"ok"},"output":value})
+                    );
+                    if failed {
+                        ExitCode::FAILURE
+                    } else {
+                        ExitCode::SUCCESS
+                    }
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Lsp(args) => {
             return match lsp::run(*args, cancellation) {
                 Ok(value) => {

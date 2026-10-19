@@ -15,6 +15,8 @@ pub struct Mount {
     pub name: String,
     #[serde(rename = "Destination")]
     pub destination: String,
+    #[serde(rename = "RW")]
+    pub read_write: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -37,6 +39,19 @@ pub struct ContainerInfo {
     pub binds: Vec<String>,
     pub devices: Vec<serde_json::Value>,
     pub restart: String,
+    pub cap_add: Vec<String>,
+    pub pid_mode: String,
+    pub ipc_mode: String,
+    pub cgroupns_mode: String,
+    pub tmpfs: BTreeMap<String, String>,
+    pub ulimits: Vec<Ulimit>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Ulimit {
+    pub name: String,
+    pub soft: u64,
+    pub hard: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VolumeInfo {
@@ -155,7 +170,7 @@ impl Docker {
 fn argv(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| (*s).into()).collect()
 }
-const CONTAINER_FORMAT: &str = r#"{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Image}},"running":{{json .State.Running}},"labels":{{json .Config.Labels}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"pids":{{.HostConfig.PidsLimit}},"readonly":{{.HostConfig.ReadonlyRootfs}},"privileged":{{.HostConfig.Privileged}},"user":{{json .Config.User}},"network":{{json .HostConfig.NetworkMode}},"caps":{{json .HostConfig.CapDrop}},"security":{{json .HostConfig.SecurityOpt}},"mounts":{{json .Mounts}},"binds":{{if .HostConfig.Binds}}{{json .HostConfig.Binds}}{{else}}[]{{end}},"devices":{{if .HostConfig.Devices}}{{json .HostConfig.Devices}}{{else}}[]{{end}},"restart":{{json .HostConfig.RestartPolicy.Name}}}"#;
+const CONTAINER_FORMAT: &str = r#"{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Image}},"running":{{json .State.Running}},"labels":{{json .Config.Labels}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"pids":{{.HostConfig.PidsLimit}},"readonly":{{.HostConfig.ReadonlyRootfs}},"privileged":{{.HostConfig.Privileged}},"user":{{json .Config.User}},"network":{{json .HostConfig.NetworkMode}},"caps":{{json .HostConfig.CapDrop}},"security":{{json .HostConfig.SecurityOpt}},"mounts":{{json .Mounts}},"binds":{{if .HostConfig.Binds}}{{json .HostConfig.Binds}}{{else}}[]{{end}},"devices":{{if .HostConfig.Devices}}{{json .HostConfig.Devices}}{{else}}[]{{end}},"restart":{{json .HostConfig.RestartPolicy.Name}},"cap_add":{{if .HostConfig.CapAdd}}{{json .HostConfig.CapAdd}}{{else}}[]{{end}},"pid_mode":{{json .HostConfig.PidMode}},"ipc_mode":{{json .HostConfig.IpcMode}},"cgroupns_mode":{{json .HostConfig.CgroupnsMode}},"tmpfs":{{json .HostConfig.Tmpfs}},"ulimits":{{json .HostConfig.Ulimits}}}"#;
 pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
     let spec = &record.spec;
     let mut args = argv(&[
@@ -174,10 +189,14 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
         "--restart=no",
         "--log-driver=none",
         "--stop-signal=SIGKILL",
-        "--ulimit=nofile=256:256",
         "--ulimit=core=0:0",
         "--hostname=namzu-pal",
     ]);
+    let open_files = spec.sandbox.as_ref().map_or(256, |p| p.limits.open_files);
+    args.push(format!("--ulimit=nofile={open_files}:{open_files}"));
+    if let Some(p) = &spec.sandbox {
+        args.push(format!("--ulimit=fsize={0}:{0}", p.limits.file_bytes));
+    }
     args.extend([
         "--memory".into(),
         spec.memory_bytes.to_string(),
@@ -188,12 +207,17 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
         "--pids-limit".into(),
         spec.pids.to_string(),
         "--mount".into(),
-        format!("type=volume,src={},dst=/workspace", record.volume),
-        "--tmpfs".into(),
         format!(
-            "/tmp:rw,nosuid,nodev,size={},mode=1777",
-            if spec.browser { 268435456 } else { 16777216 }
+            "type=volume,src={},dst=/workspace{}",
+            record.volume,
+            if spec.sandbox.as_ref().is_some_and(|p| !p.writable()) {
+                ",readonly"
+            } else {
+                ""
+            }
         ),
+        "--tmpfs".into(),
+        scratch_options(spec),
         "--workdir=/workspace".into(),
         format!("--entrypoint={GUEST}"),
     ]);
@@ -211,6 +235,18 @@ pub fn create_arguments(record: &ComputerRecord) -> Vec<String> {
     }
     args.extend([spec.image.clone(), "idle".into()]);
     args
+}
+pub fn scratch_options(spec: &ComputerSpec) -> String {
+    match &spec.sandbox {
+        Some(p) => format!(
+            "/tmp:rw,nosuid,nodev,noexec,size={},mode=1777",
+            p.limits.scratch_bytes
+        ),
+        None => format!(
+            "/tmp:rw,nosuid,nodev,size={},mode=1777",
+            if spec.browser { 268435456 } else { 16777216 }
+        ),
+    }
 }
 impl Engine for Docker {
     fn perform(
@@ -381,6 +417,32 @@ impl ContainerInfo {
             && self.security.iter().any(|s| s == "no-new-privileges:true")
             && self.binds.is_empty()
             && self.devices.is_empty()
+            && self.cap_add.is_empty()
+            && self.pid_mode.is_empty()
+            && self.ipc_mode == "private"
+            && self.cgroupns_mode == "private"
+            && self
+                .mounts
+                .iter()
+                .all(|m| m.read_write == spec.sandbox.as_ref().is_none_or(|p| p.writable()))
+            && spec.sandbox.as_ref().is_none_or(|p| {
+                let expected = scratch_options(spec);
+                self.security.len() == 1
+                    && self.tmpfs.len() == 1
+                    && self.tmpfs.get("/tmp").is_some_and(|v| v == &expected[5..])
+                    && self.ulimits.len() == 3
+                    && [
+                        ("core", 0),
+                        ("nofile", u64::from(p.limits.open_files)),
+                        ("fsize", p.limits.file_bytes),
+                    ]
+                    .iter()
+                    .all(|(name, limit)| {
+                        self.ulimits
+                            .iter()
+                            .any(|u| u.name == *name && u.soft == *limit && u.hard == *limit)
+                    })
+            })
             && self.mounts.len() == 1
             && self.mounts[0].kind == "volume"
             && self.mounts[0].name == volume

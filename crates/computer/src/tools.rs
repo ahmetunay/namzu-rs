@@ -35,8 +35,26 @@ impl<'a, E: Engine> GuestTools<'a, E> {
             && self.policy.allow.as_ref().is_none_or(|s| s.contains(name))
             && match name {
                 "read_file" | "list_files" => true,
-                "write_file" => self.policy.allow_write,
-                "shell" => self.policy.allow_shell,
+                "write_file" => {
+                    self.policy.allow_write
+                        && self
+                            .computer
+                            .snapshot()
+                            .spec
+                            .sandbox
+                            .as_ref()
+                            .is_none_or(|p| p.writable())
+                }
+                "shell" => {
+                    self.policy.allow_shell
+                        && self
+                            .computer
+                            .snapshot()
+                            .spec
+                            .sandbox
+                            .as_ref()
+                            .is_none_or(|p| p.commands())
+                }
                 name => visual_admitted(name, &self.visual, &self.computer.snapshot().spec),
             }
     }
@@ -154,7 +172,13 @@ impl<E: Engine> Tools for GuestTools<'_, E> {
         if !self.admitted(&call.name) {
             return Err(AgentError::Configuration("guest tool denied"));
         }
-        validate_guest(call)
+        validate_guest(call)?;
+        if call.name == "write_file"
+            && let Some(policy) = &self.computer.snapshot().spec.sandbox
+        {
+            policy.check_write(call.arguments["content"].as_str().map_or(0, str::len))?;
+        }
+        Ok(())
     }
     fn definitions(&self) -> Vec<ToolDefinition> {
         let mut definitions:Vec<_> = [

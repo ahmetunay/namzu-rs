@@ -12,7 +12,7 @@ import tempfile
 def main():
     root = Path(__file__).resolve().parents[1]
     cargo = shutil.which('cargo') or '/home/agent/.cargo/bin/cargo'
-    subprocess.run([cargo, 'build', '--release', '--locked', '-p', 'namzu-computer', '--bin', 'namzu-guest'], cwd=root, check=True)
+    subprocess.run([cargo, 'build', '--release', '--locked', '--workspace', '--bins', '--examples'], cwd=root, check=True)
     binary = root / 'target/release/namzu-guest'
     env = dict(os.environ)
     for key in ('DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'):
