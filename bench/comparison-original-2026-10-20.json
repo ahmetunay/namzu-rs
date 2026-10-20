@@ -1,0 +1,484 @@
+{
+  "version": 1,
+  "kind": "live_agent_comparison",
+  "model": "gpt-6-luna",
+  "timeout_seconds": 300,
+  "repeats": 2,
+  "sequential": true,
+  "suite_sha256": "9feab3fbb912637a93c913a345a55489ae5025e86ecdb336fbe38dc2f752fbfe",
+  "memory_scope": "wait4 ru_maxrss; not aggregate simultaneous process-tree RSS/PSS",
+  "permission_profile_is_declared": true,
+  "summary": [
+    {
+      "agent": "namzu-rs",
+      "total": 10,
+      "statuses": {
+        "passed": 9,
+        "incorrect": 1,
+        "agent_error": 0,
+        "timeout": 0,
+        "output_limit": 0,
+        "oracle_error": 0
+      },
+      "total_agent_ms": 90511,
+      "median_agent_ms": 8663.5,
+      "median_passed_agent_ms": 8637,
+      "max_peak_rss_kib": 15140,
+      "median_peak_rss_kib": 14946.0,
+      "calls": {
+        "provider_calls": {
+          "known_runs": 10,
+          "total_runs": 10,
+          "sum_known": 44
+        },
+        "tool_calls": {
+          "known_runs": 10,
+          "total_runs": 10,
+          "sum_known": 34
+        }
+      }
+    },
+    {
+      "agent": "jcode",
+      "total": 10,
+      "statuses": {
+        "passed": 10,
+        "incorrect": 0,
+        "agent_error": 0,
+        "timeout": 0,
+        "output_limit": 0,
+        "oracle_error": 0
+      },
+      "total_agent_ms": 228891,
+      "median_agent_ms": 19534.0,
+      "median_passed_agent_ms": 19534.0,
+      "max_peak_rss_kib": 47248,
+      "median_peak_rss_kib": 46160.0,
+      "calls": {
+        "provider_calls": {
+          "known_runs": 0,
+          "total_runs": 10,
+          "sum_known": null
+        },
+        "tool_calls": {
+          "known_runs": 0,
+          "total_runs": 10,
+          "sum_known": null
+        }
+      }
+    }
+  ],
+  "runs": [
+    {
+      "agent": "namzu-rs",
+      "task": "slug",
+      "repeat": 0,
+      "execution_index": 0,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 8952,
+      "peak_rss_kib": 14748,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_sha256": "be705a2387d6e070cf94a7016d14684fcef6f84098bbf7ad838621c8842e083d",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "slug",
+      "repeat": 0,
+      "execution_index": 1,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 15355,
+      "peak_rss_kib": 46692,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_sha256": "be705a2387d6e070cf94a7016d14684fcef6f84098bbf7ad838621c8842e083d",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "intervals",
+      "repeat": 0,
+      "execution_index": 2,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 11236,
+      "peak_rss_kib": 14996,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_sha256": "c9be75ed07765bde77cfca0185ae28689e6cdc2bf8cbb14e4c709e1503c2cd2c",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "intervals",
+      "repeat": 0,
+      "execution_index": 3,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 19173,
+      "peak_rss_kib": 46160,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_sha256": "c9be75ed07765bde77cfca0185ae28689e6cdc2bf8cbb14e4c709e1503c2cd2c",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "toposort",
+      "repeat": 0,
+      "execution_index": 4,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 7583,
+      "peak_rss_kib": 14680,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_sha256": "10d45a2d45cb071c724fed1fbbb70b5f6beb174b5eae945f3c846855b2921713",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "toposort",
+      "repeat": 0,
+      "execution_index": 5,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 38310,
+      "peak_rss_kib": 45776,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_sha256": "10d45a2d45cb071c724fed1fbbb70b5f6beb174b5eae945f3c846855b2921713",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "ledger",
+      "repeat": 0,
+      "execution_index": 6,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 8637,
+      "peak_rss_kib": 14876,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "4fe58902c6103541b83f778dd0d3651555e864a972df0419c7a06c403868b3b8",
+      "input_sha256": "162baafc20add77040343f10ed58d663f809bb28f4f37132ee6180306474f7f2",
+      "oracle_sha256": "b3bd47b29fb74e8da1384cb3e691aebc485875d0c97acdaff1b0d2e1383ded30",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "ledger",
+      "repeat": 0,
+      "execution_index": 7,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 25039,
+      "peak_rss_kib": 46096,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "4fe58902c6103541b83f778dd0d3651555e864a972df0419c7a06c403868b3b8",
+      "input_sha256": "162baafc20add77040343f10ed58d663f809bb28f4f37132ee6180306474f7f2",
+      "oracle_sha256": "b3bd47b29fb74e8da1384cb3e691aebc485875d0c97acdaff1b0d2e1383ded30",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "refactor",
+      "repeat": 0,
+      "execution_index": 8,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 8241,
+      "peak_rss_kib": 15140,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "b6a1ca70dfd12b0931c59fb7e6e302045f9579023aeccd0670c8840015d8c7d3",
+      "input_sha256": "9443b53317abe170b5d8249d3a69f61e0d73086eb176c63649cefe493c9100ab",
+      "oracle_sha256": "822b13f5e64e98c1d9340bc042c39267a4c1ea568427fa89a1d5b5652ce57e77",
+      "stats": {
+        "provider_calls": 5,
+        "tool_calls": 4
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "refactor",
+      "repeat": 0,
+      "execution_index": 9,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 31618,
+      "peak_rss_kib": 47248,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "b6a1ca70dfd12b0931c59fb7e6e302045f9579023aeccd0670c8840015d8c7d3",
+      "input_sha256": "9443b53317abe170b5d8249d3a69f61e0d73086eb176c63649cefe493c9100ab",
+      "oracle_sha256": "822b13f5e64e98c1d9340bc042c39267a4c1ea568427fa89a1d5b5652ce57e77",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "slug",
+      "repeat": 1,
+      "execution_index": 10,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 17311,
+      "peak_rss_kib": 45968,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_sha256": "be705a2387d6e070cf94a7016d14684fcef6f84098bbf7ad838621c8842e083d",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "slug",
+      "repeat": 1,
+      "execution_index": 11,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 7171,
+      "peak_rss_kib": 14936,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "72c517f767953d3ef365fe4fbe839d14d5d2fe22622dd48c83c8748d1f70d2a3",
+      "input_sha256": "2aa218c158b937e3577e68566e24ef5b6a4a4c1a762b745a65ab52dcf4e2874b",
+      "oracle_sha256": "be705a2387d6e070cf94a7016d14684fcef6f84098bbf7ad838621c8842e083d",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "intervals",
+      "repeat": 1,
+      "execution_index": 12,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 18103,
+      "peak_rss_kib": 46128,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_sha256": "c9be75ed07765bde77cfca0185ae28689e6cdc2bf8cbb14e4c709e1503c2cd2c",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "intervals",
+      "repeat": 1,
+      "execution_index": 13,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 8612,
+      "peak_rss_kib": 15060,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "3701b3a1e98e12ebadb1323ee70bccf2ff4ccdc90803af8aa24ebc3c1fa5105f",
+      "input_sha256": "657709a2c0f88c4da585122125f1a2ce0e3ea0b6a84a6e38e8b963d088ad88f6",
+      "oracle_sha256": "c9be75ed07765bde77cfca0185ae28689e6cdc2bf8cbb14e4c709e1503c2cd2c",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "toposort",
+      "repeat": 1,
+      "execution_index": 14,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 18255,
+      "peak_rss_kib": 46452,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_sha256": "10d45a2d45cb071c724fed1fbbb70b5f6beb174b5eae945f3c846855b2921713",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "toposort",
+      "repeat": 1,
+      "execution_index": 15,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 12582,
+      "peak_rss_kib": 15072,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "9576e29711fd48bbeef1d8f6bf4e4881b6be8c0f2a99da93874281f69fbd42fc",
+      "input_sha256": "b79080ad1966cf97a8adec2e5864022f38cde9fd91b8d60cc96210177ba87067",
+      "oracle_sha256": "10d45a2d45cb071c724fed1fbbb70b5f6beb174b5eae945f3c846855b2921713",
+      "stats": {
+        "provider_calls": 5,
+        "tool_calls": 4
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "ledger",
+      "repeat": 1,
+      "execution_index": 16,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 19895,
+      "peak_rss_kib": 46160,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "4fe58902c6103541b83f778dd0d3651555e864a972df0419c7a06c403868b3b8",
+      "input_sha256": "162baafc20add77040343f10ed58d663f809bb28f4f37132ee6180306474f7f2",
+      "oracle_sha256": "b3bd47b29fb74e8da1384cb3e691aebc485875d0c97acdaff1b0d2e1383ded30",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "ledger",
+      "repeat": 1,
+      "execution_index": 17,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 8690,
+      "peak_rss_kib": 14684,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "4fe58902c6103541b83f778dd0d3651555e864a972df0419c7a06c403868b3b8",
+      "input_sha256": "162baafc20add77040343f10ed58d663f809bb28f4f37132ee6180306474f7f2",
+      "oracle_sha256": "b3bd47b29fb74e8da1384cb3e691aebc485875d0c97acdaff1b0d2e1383ded30",
+      "stats": {
+        "provider_calls": 4,
+        "tool_calls": 3
+      }
+    },
+    {
+      "agent": "jcode",
+      "task": "refactor",
+      "repeat": 1,
+      "execution_index": 18,
+      "status": "passed",
+      "oracle_passed": true,
+      "elapsed_ms": 25832,
+      "peak_rss_kib": 46664,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "prompt_sha256": "b6a1ca70dfd12b0931c59fb7e6e302045f9579023aeccd0670c8840015d8c7d3",
+      "input_sha256": "9443b53317abe170b5d8249d3a69f61e0d73086eb176c63649cefe493c9100ab",
+      "oracle_sha256": "822b13f5e64e98c1d9340bc042c39267a4c1ea568427fa89a1d5b5652ce57e77",
+      "stats": {
+        "provider_calls": null,
+        "tool_calls": null
+      }
+    },
+    {
+      "agent": "namzu-rs",
+      "task": "refactor",
+      "repeat": 1,
+      "execution_index": 19,
+      "status": "incorrect",
+      "oracle_passed": false,
+      "elapsed_ms": 8807,
+      "peak_rss_kib": 14956,
+      "program_sha256": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "prompt_sha256": "b6a1ca70dfd12b0931c59fb7e6e302045f9579023aeccd0670c8840015d8c7d3",
+      "input_sha256": "9443b53317abe170b5d8249d3a69f61e0d73086eb176c63649cefe493c9100ab",
+      "oracle_sha256": "822b13f5e64e98c1d9340bc042c39267a4c1ea568427fa89a1d5b5652ce57e77",
+      "stats": {
+        "provider_calls": 6,
+        "tool_calls": 5
+      }
+    }
+  ],
+  "both_passed_pairs": 9,
+  "median_paired_jcode_over_namzu_elapsed": 2.2894131185270425,
+  "limitations": [
+    "Small sample; no statistical superiority or language-effect claim.",
+    "System prompts, internal limits and tool implementations differ.",
+    "Call counts are self-reported; unknown counts remain null.",
+    "Hashes do not identify all dependencies or the whole environment."
+  ],
+  "interpretation": "Original uncorrected oracle verdicts, superseded by comparison-2026-10-20.json after all 20 outputs were rechecked. Namzu refactor repeat 1 was a verified false rejection of a valid direct import.",
+  "provenance": {
+    "namzu_rust_source_commit": "99fd14409143de4d90d6d73e5b08101bc86fb746",
+    "jcode_version": "0.98.1",
+    "jcode_revision": "1c7426eb1",
+    "architecture": "x86_64",
+    "os": "Linux",
+    "common_model": "gpt-6-luna",
+    "effort": "low",
+    "readiness_checks": {
+      "namzu": true,
+      "jcode": true
+    },
+    "unscored_readiness_turns": 2,
+    "sha256": {
+      "namzu_binary": "2f5113967f9cb773c5d3023dc91c22886c46a5642a76ec3afff58be22c08b813",
+      "jcode_launcher": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "jcode_binary": "bc1646f4b2f35cd259f01c6419ba95a54f47af821838bbee8f62f34452b2a567"
+    },
+    "jcode_release_archive_sha256": "449a8ed50aa9ac75e6afe9b8e916814172ff7cc63913c7ae1f9abd5b1bc5323c",
+    "namzu_tool_allow": [
+      "read_file",
+      "list_files",
+      "search_files",
+      "write_file",
+      "apply_patch",
+      "shell"
+    ],
+    "jcode_tools": [
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "glob",
+      "grep"
+    ],
+    "permission_profile": "host-read-write-shell",
+    "agent_timeout_seconds": 300,
+    "checker_timeout_seconds": 30,
+    "repeats": 2,
+    "planned_scored_runs": 20
+  }
+}

@@ -439,3 +439,28 @@ fn checker_launch_failure_is_inconclusive_and_does_not_abort_other_runs() {
     );
     assert_eq!(report["runs"][0]["oracle"]["check"]["outcome"], "error");
 }
+
+#[test]
+fn refactor_accepts_function_import_alias_while_rejecting_copied_logic() {
+    let root = tempfile::tempdir().unwrap();
+    let mut spec = suite();
+    spec.tasks = vec![builtin_task("refactor").unwrap()];
+    spec.agents = vec![Agent {
+        program: executable(std::path::Path::new("python3")).unwrap(),
+        args: vec!["-I".into(), "-c".into(),
+            "from pathlib import Path; Path('solution.py').write_text('from legacy import normalize\\n\\ndef normalize_many(texts):\\n    return [normalize(text) for text in texts]\\n')".into()],
+        ..agent("alias", "")
+    }, agent("copied", r#"cat > solution.py <<'PYTHON'
+def normalize_many(texts):
+    result = []
+    for text in texts:
+        if type(text) is not str:
+            raise TypeError("text must be str")
+        result.append(" ".join(text.strip().lower().split()))
+    return result
+PYTHON
+"#)];
+    let report = run(&spec, root.path(), Cancellation::default(), |_| {}).unwrap();
+    assert_eq!(report["runs"][0]["status"], "passed");
+    assert_eq!(report["runs"][1]["status"], "incorrect");
+}

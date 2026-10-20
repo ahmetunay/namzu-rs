@@ -260,11 +260,14 @@ Anahtarın varlığı servis/model erişimini kanıtlamaz.
   13 yeni Rust testi, toplam 651; 9 release CLI kabul grubu, fmt/Clippy/release.
   LLM judge/trajectory/fuzzy skor ve upstream deney API'si taşınmadı.
   [Kullanım, rapor geçişi ve sınırlar](docs/EVALS.md).
-- **7.4** — Jcode/Namzu karşılaştırması: aynı model/görev/izin/300 saniye bütçe,
-sıralı koşum, tekrarlar; doğruluk/süre/peak RSS/araç ve model çağrıları.
-  Hazırlık: sabit Jcode release doğrulandı, 20 koşuluk suite hazır; 5 Python
-  rapor doğrulama testi geçti. Canlı koşular OpenAI girişi bekliyor; tamamlanmadı.
-  [Deney protokolü ve devam adımları](docs/COMPARISON.md).
+- **7.4 — tamam (küçük canlı karşılaştırma kapsamı)** — GPT-6-Luna/low,
+  Jcode v0.98.1, aynı beş görev × iki tekrar, ters seri sıra, 300 saniye.
+  20 canlı koşu; orakl import-alias false-negative düzeltmesi sonrası bütün
+  çıktılar yeni inference olmadan yeniden sınandı: iki ajan 10/10. İlk rapor ve
+  ölçümler korundu. Namzu toplam 90.511 s / 14.79 MiB max peak RSS; Jcode
+  228.891 s / 46.14 MiB. Namzu 44 model/34 araç çağrısı; Jcode sayaçları bilinmiyor.
+  652 Rust testi, fmt/Clippy/release, 5 Python rapor ve 9 release eval kabul grubu.
+  [Sonuçlar, post-hoc düzeltme ve sınırlar](docs/COMPARISON.md).
 
 Kabul: tekrar üretilebilir yerel rapor; model başarımı, araçlar ve çalışma zamanı
 maliyeti ayrı ölçülür. Gizli içerik telemetriye taşınmaz.
@@ -285,7 +288,12 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 7.4 — eşit koşullarda Namzu/Jcode karşılaştırma deneyleri.**
+**7. bölüm tamamlandı (belgelenmiş alt kümeler kapsamında).**
+Kullanıcının önceki planına göre sıradaki hedef orijinal Namzu ile özellik/parite
+karşılaştırmasıdır. 8. masaüstü modülü başlatılmadı.
+7.4 tamamlandı: 20 seri canlı koşu ve bağımsız orakl denetimi; sayısal sonuçlar,
+ölçüm kimlikleri ve yanlış ret düzeltmesinin eski/yeni raporları korundu.
+[Deney protokolü ve sınırlar](docs/COMPARISON.md).
 7.3 tamamlandı: beş sabit görev, davranış ve protected-file oraklları, typed hata
 sınıfları ve eksik ölçümün doğruluk hatasından ayrılması; tekrar üretilebilir yerel
 fixture kabulü. [Kapsam ve upstream farkları](docs/EVALS.md). Canlı model çağrısı 0.

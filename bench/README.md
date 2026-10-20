@@ -38,8 +38,9 @@ veya Jcode'un başarımı olarak yorumlanmaz. Rapor `mode: fixture` taşır.
 
 ## Canlı Namzu/Jcode karşılaştırması
 
-7.4 için iki tekrarlı beş görevlik deney protokolü ve rapor doğrulama aracı:
-[COMPARISON.md](../docs/COMPARISON.md). Bu oturumdaki canlı koşular giriş bekliyor.
+7.4 iki tekrarlı beş görevlik canlı deney tamamlandı; orakl denetimi sonrası
+iki ajan da 10/10. Süre/RSS sonuçları, ilk rapor, yanlış ret düzeltmesi ve rapor aracı:
+[COMPARISON.md](../docs/COMPARISON.md).
 
 Önce iki ajan aynı aboneliğe bağlanmış ve aynı model iki tarafta bulunmuş olmalı.
 Login canlı, normal fixture testleri offline'dır. Ortak modeli tahmin etmek yerine

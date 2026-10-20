@@ -31,5 +31,7 @@ def probe(text):
     calls.append(text)
     return "probe:" + text
 legacy.normalize = probe
+# Reload after installing the probe: a direct function import is valid delegation too.
+candidate = load("candidate_probe", "solution.py")
 assert candidate.normalize_many([" A ", "b", "b"]) == ["probe: A ", "probe:b", "probe:b"]
 assert calls == [" A ", "b", "b"]

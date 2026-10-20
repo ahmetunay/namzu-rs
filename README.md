@@ -99,7 +99,8 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   eklendi; [kullanım ve desteklenen alt küme](docs/AG-UI.md).
   7.3 deterministik eval: beş görev, bağımsız typed dosya/test kapıları,
   yanlış çözüm ile ölçüm hatası ayrımı ve rapor v2; [kullanım ve sınırlar](docs/EVALS.md).
-  Sırada 7.4 karşılaştırma koşulları ve gerçek Namzu/Jcode deneyleri var.
+  7.4 canlı Namzu-RS/Jcode karşılaştırması tamam: 20 koşu, orakl denetimi sonrası
+  iki ajan da 10/10; [süre/RSS sonuçları ve sınırlar](docs/COMPARISON.md).
 
 ## 0.3 — özel durum ve oturum devamı
 

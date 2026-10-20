@@ -25,7 +25,8 @@ python3 scripts/eval_smoke.py
 
 Ledger oraklı sabit `7303` tohumuyla 80 ek veri kümesi üretir. Referans hesabı
 aday çözümden bağımsızdır. Refactor oraklı legacy fonksiyonunu probe ile değiştirip
-gerçek delegasyon ve çağrı sırasını sınar. Sadece aynı metni döndüren kopya kod
+gerçek delegasyon ve çağrı sırasını sınar. 7.4 düzeltmesiyle probe sonrası aday
+yeniden yüklenir; doğrudan fonksiyon importu da geçerli delegasyon sayılır. Sadece aynı metni döndüren kopya kod
 geçmez. Legacy dosyası ayrıca exact-byte gate ile denetlenir. Testler workspace'e
 başlangıç dosyası olarak verilmez; Python `-I -c` ile host tarafından çalıştırılır.
 Bu, kötü niyetli host yetkili bir ajana karşı gizlilik veya izolasyon garantisi değildir.
@@ -113,7 +114,7 @@ koşuya devam edilir; iptal ve kayıt/host dosya sistemi hataları deneyi durdur
 
 ## Kabul ve sınırlar
 
-13 yeni Rust davranış testiyle toplam **651 test** geçti. Format, Clippy
+7.3 kabulünde 13 yeni Rust davranış testiyle toplam **651 test** geçti. Format, Clippy
 (`-D warnings`), release workspace build ve **9 release CLI kabul grubu** geçti.
 Kabul komutu tekrar çalıştırılabilir; `artifacts/eval-acceptance/report.json`
 başlangıçta `running` yazılır, hata veya kesintide eski başarılı rapor gösterilmez.
@@ -139,3 +140,8 @@ değildir. Dosya yolları ve görev tanımları içerik taşıyabilir: eval rapo
 artifact'tir, içeriksiz telemetry kaydıyla aynı gizlilik sözleşmesine sahip değildir.
 Ham ajan/checker çıktıları 0600 özel loglarda kalır; kabul raporları model kotası
 harcamaz ve üretilen artifact'ler GitHub'a yüklenmez.
+
+7.4 canlı deneyinde oraklın doğrudan fonksiyon importunu yanlış reddettiği
+saptandı. Bir yeni regresyon testiyle toplam 652 Rust testi; düzeltilmiş oraklla
+20 kayıtlı çıktı sıfır yeni inference ile yeniden sınandı. İlk kararlar silinmedi.
+[Yanlış ret, düzeltme ve canlı sonuçlar](COMPARISON.md).
