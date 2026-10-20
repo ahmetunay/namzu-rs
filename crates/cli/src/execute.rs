@@ -110,6 +110,20 @@ pub fn execute_observed(
     cancellation: Cancellation,
     events: &mut dyn namzu_core::EventSink,
 ) -> Execution {
+    let source = if events.supports_approval() {
+        namzu_telemetry::Source::Tui
+    } else {
+        namzu_telemetry::Source::Exec
+    };
+    execute_with_source(prompt, args, cancellation, events, source)
+}
+pub(crate) fn execute_with_source(
+    prompt: String,
+    args: RunOptions,
+    cancellation: Cancellation,
+    events: &mut dyn namzu_core::EventSink,
+    source: namzu_telemetry::Source,
+) -> Execution {
     let started = Instant::now();
     let mut session_id = None;
     let mut trace = None;
@@ -118,14 +132,7 @@ pub fn execute_observed(
         let store = PrivateStore::open(&state_dir)?;
         let mut config = config_for(&args, &store)?;
         if config.telemetry {
-            trace = Some(namzu_telemetry::LocalTrace::start(
-                &store,
-                if events.supports_approval() {
-                    namzu_telemetry::Source::Tui
-                } else {
-                    namzu_telemetry::Source::Exec
-                },
-            )?);
+            trace = Some(namzu_telemetry::LocalTrace::start(&store, source)?);
         }
         let mut tapped = namzu_telemetry::Tap {
             inner: events,
@@ -551,7 +558,11 @@ impl namzu_core::Observer for PresentationObserver<'_, '_> {
         stats: &namzu_core::Stats,
         pending: Option<&namzu_core::ToolCall>,
     ) -> Result<(), AgentError> {
-        namzu_core::Observer::checkpoint(&mut self.journal, messages, stats, pending)
+        namzu_core::Observer::checkpoint(&mut self.journal, messages, stats, pending)?;
+        if let Some(call) = pending {
+            self.events.tool_proposed(call)?;
+        }
+        Ok(())
     }
     fn event(&mut self, event: namzu_core::Event) -> Result<(), AgentError> {
         self.events.emit(event)

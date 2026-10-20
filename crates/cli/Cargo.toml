@@ -10,6 +10,8 @@ name = "namzu-rs"
 path = "src/main.rs"
 
 [dependencies]
+namzu-ag-ui.workspace = true
+sha2 = "0.10"
 namzu-telemetry.workspace = true
 namzu-capabilities.workspace = true
 namzu-sandbox.workspace = true

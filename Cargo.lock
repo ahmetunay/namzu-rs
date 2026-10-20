@@ -1233,6 +1233,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
+name = "namzu-ag-ui"
+version = "0.1.0"
+dependencies = [
+ "namzu-core",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "namzu-audio"
 version = "0.1.0"
 dependencies = [
@@ -1282,6 +1292,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "libc",
+ "namzu-ag-ui",
  "namzu-audio",
  "namzu-bench",
  "namzu-capabilities",
@@ -1298,6 +1309,7 @@ dependencies = [
  "namzu-tui",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 

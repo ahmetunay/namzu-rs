@@ -519,3 +519,34 @@ fn disabled_observer_is_transparent_and_does_not_require_storage() {
     )
     .unwrap();
 }
+
+#[test]
+fn tap_forwards_proposal_failure_without_copying_arguments_into_trace() {
+    struct Sink;
+    impl EventSink for Sink {
+        fn tool_proposed(&mut self, c: &ToolCall) -> Result<(), AgentError> {
+            assert_eq!(c.arguments["path"], "SECRET_PATH");
+            Err(AgentError::Cancelled)
+        }
+        fn emit(&mut self, _: Event) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+    let mut recorder = Recorder::new(Source::Agui, 10).unwrap();
+    let mut sink = Sink;
+    assert_eq!(
+        Tap {
+            inner: &mut sink,
+            recorder: Some(&mut recorder)
+        }
+        .tool_proposed(&call())
+        .unwrap_err(),
+        AgentError::Cancelled
+    );
+    recorder.finish(Some(&AgentError::Cancelled));
+    assert!(
+        !serde_json::to_string(recorder.snapshot())
+            .unwrap()
+            .contains("SECRET")
+    );
+}

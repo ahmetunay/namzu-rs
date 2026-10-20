@@ -44,6 +44,10 @@ pub trait EventSink {
     fn supports_approval(&self) -> bool {
         false
     }
+    /// Optional validated call presentation hook. Never authorizes an effect.
+    fn tool_proposed(&mut self, _: &ToolCall) -> Result<(), AgentError> {
+        Ok(())
+    }
     /// Host permission decision; must stay inside existing tool-policy ceilings.
     fn approve(&mut self, _: &ToolCall, _: &TurnContext) -> Result<bool, AgentError> {
         Ok(true)

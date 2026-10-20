@@ -148,4 +148,6 @@ ve HTTP sırasında Ctrl-C ile typed cancelled trace kontrol edilir. Ayrıca ön
 75 provider/servis/katalog/TUI kabulü ve 4 Pal PTY regresyonu korunur.
 
 Canlı model çağrısı 0. Orijinalle tam özellik/performans eşitliği ölçülmedi.
-Sıradaki iş **7.2 — AG-UI olay eşlemesi ve istemci entegrasyonu**.
+7.2 ile [AG-UI yerel POST/SSE](AG-UI.md) eklendi. Bu host'un telemetry source'u
+`agui`dir; task içerikli SSE olayları trace'e yazılmaz. `tool_proposed` hook'u
+Tap üzerinden içerik biriktirmeden iletilir. Sonraki iş 7.3 deterministik eval'dir.

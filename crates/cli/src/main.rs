@@ -1,3 +1,4 @@
+mod agui;
 mod audio;
 mod benchmark;
 mod capability_runtime;
@@ -27,6 +28,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Authenticated loopback AG-UI POST/SSE service using host-selected scope.
+    AgUi(Box<agui::Args>),
     /// Inspect content-free private local traces offline.
     Telemetry(Box<telemetry::Args>),
     /// Inspect selected capability/tool permissions offline or manage a retained exec computer.
@@ -312,6 +315,15 @@ fn main() -> ExitCode {
     }
     let started = Instant::now();
     let (json_output, offline, session_id, telemetry_id, result) = match cli.command {
+        Command::AgUi(args) => {
+            return match agui::run(*args, cancellation) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Telemetry(args) => {
             return match telemetry::run(*args) {
                 Ok(value) => {

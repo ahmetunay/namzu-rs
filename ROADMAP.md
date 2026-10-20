@@ -65,7 +65,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | 6.1–6.5 plan kapsamı tamam | Ortak sözleşme testleriyle ayrı sürücüler |
-| 7 | Telemetri, AG-UI ve değerlendirme | 7.1 tamam; 7.2–7.4 sırada | Redakte olaylar ve tekrar üretilebilir raporlar |
+| 7 | Telemetri, AG-UI ve değerlendirme | 7.1–7.2 tamam; 7.3–7.4 sırada | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
 Bağımlılıklar nedeniyle tek Codex sağlayıcısı 0'da, temel container/sandbox
@@ -247,7 +247,13 @@ Anahtarın varlığı servis/model erişimini kanıtlamaz.
   75 mevcut provider/servis/katalog/TUI ve 4 Pal PTY regresyon kontrolü.
   fmt/Clippy/release geçti. OTLP/exporter ve geçmiş session export'u eklenmedi.
   [Kapsam, kullanım ve hata davranışı](docs/TELEMETRY.md).
-- **7.2** — AG-UI: mesaj/araç/ilerleme olayları, iptal ve istemci entegrasyonu.
+- **7.2 — tamam (yerel AG-UI alt kümesi)** — Bağımsız typed olay/SSE/client SDK;
+  bearer/loopback POST host, server-owned history, private thread/replay fence,
+  tek kullanımlık onay ve HTTP/disconnect iptali. Resmî 0.0.59 HttpAgent ve Python
+  client; 23 yeni Rust testi, toplam 638, 20 release kabul grubu; fmt/Clippy/release.
+  Önceki 92 provider/telemetry/Pal regresyonu geçti. Frontend tools/state patch/
+  kalıcı interrupts-resume ve browser CORS uygulanmadı.
+  [Kullanım, kabul ve sınırlar](docs/AG-UI.md).
 - **7.3** — Deterministik eval görevleri, dosya/test oraklları ve başarısızlık sınıfları.
 - **7.4** — Jcode/Namzu karşılaştırması: aynı model/görev/izin/300 saniye bütçe,
 sıralı koşum, tekrarlar; doğruluk/süre/peak RSS/araç ve model çağrıları.
@@ -271,7 +277,11 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 7.2 — AG-UI olay eşlemesi ve istemci entegrasyonu.**
+**Sıradaki iş: 7.3 — deterministik eval görevleri ve başarısızlık sınıfları.**
+7.2 tamamlandı: yerel authenticated POST/SSE, native event eşlemesi, aynı session'da
+turn devamı, tek kullanımlık izin ve iptal; resmî Node HttpAgent ile metin ve araç
+lifecycle kabulü. Desteklenen alt küme ve upstream farkları [AG-UI belgesinde](docs/AG-UI.md).
+Canlı model çağrısı 0.
 7.1 tamamlandı: içeriksiz ortak trace/ölçüm SDK'sı, opt-in özel yerel kayıt,
 normal/Pal terminalde izin/iptal zinciri ve offline inceleme. Kayıt sınırları,
 çökmede pending işareti ve publication hatası davranışı açıklandı;

@@ -95,7 +95,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   koşucusu; [matris ve sınırlar](docs/PROVIDER-CONFORMANCE.md).
   7.1 ile opt-in içeriksiz yerel trace/ölçümler ve exec/TUI/Pal entegrasyonu eklendi;
   [kullanım, gizlilik ve kalıcılık sınırları](docs/TELEMETRY.md).
-  Sırada AG-UI olay eşlemesi/istemci entegrasyonu 7.2 var.
+  7.2 AG-UI SDK, kimlikli loopback POST/SSE, canlı onay/iptal ve istemci entegrasyonu
+  eklendi; [kullanım ve desteklenen alt küme](docs/AG-UI.md).
+  Sırada deterministik eval 7.3 var.
 
 ## 0.3 — özel durum ve oturum devamı
 

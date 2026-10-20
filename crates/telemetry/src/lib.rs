@@ -53,6 +53,7 @@ impl From<TraceId> for String {
 #[serde(rename_all = "snake_case")]
 pub enum Source {
     Exec,
+    Agui,
     Tui,
     Pal,
     Sdk,
@@ -489,6 +490,9 @@ pub struct Tap<'a> {
     pub recorder: Option<&'a mut Recorder>,
 }
 impl EventSink for Tap<'_> {
+    fn tool_proposed(&mut self, call: &ToolCall) -> Result<(), AgentError> {
+        self.inner.tool_proposed(call)
+    }
     fn supports_approval(&self) -> bool {
         self.inner.supports_approval()
     }
