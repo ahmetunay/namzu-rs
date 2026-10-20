@@ -64,7 +64,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
-| 6 | Diğer model sağlayıcıları | 6.1–6.4 tamam; 6.5 sırada | Ortak sözleşme testleriyle ayrı sürücüler |
+| 6 | Diğer model sağlayıcıları | 6.1–6.5 plan kapsamı tamam | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
@@ -228,7 +228,12 @@ Yerel testler için ücretli ses hizmeti zorunlu değildir.
   ve 57 mevcut sağlayıcı/servis/TUI regresyon kontrolü geçti.
   Giriş token sayacı/otomatik context garantisi
   eklenmedi; Codex output wire'ı korunur. [Kullanım ve sınırlar](docs/MODEL-CATALOG.md).
-- **6.5** — Her sürücüye ortak sözleşme testleri; açık istekle canlı smoke testi.
+- **6.5 — tamam (ortak deterministik kabul kapsamı)** — 13 ortak Rust senaryo
+  grubu, 28 servis/wire/auth kombinasyonu; 596 toplam Rust testi. Açık/read-only
+  canlı smoke koşucusu, 9 offline koşucu testi ve 10 gerçek CLI loopback oraklı.
+  75 mevcut release kabul kontrolü, fmt/Clippy/release geçti. Canlı model çağrısı 0;
+  gerçek servis/model erişimi veya upstream tam eşitliği iddia edilmez.
+  [Matris, kullanım ve sınırlar](docs/PROVIDER-CONFORMANCE.md).
 
 Başlamadan upstream paket envanteriyle tam sağlayıcı listesi netleştirilir.
 Anahtarın varlığı servis/model erişimini kanıtlamaz.
@@ -260,7 +265,11 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 6.5 — ortak sağlayıcı conformance kontrolleri.**
+**Sıradaki iş: 7.1 — ortak olay şeması ve redakte telemetri.**
+6.5 tamamlandı: tüm mevcut sürücülere aynı 13 senaryo/28 kombinasyon matrisi,
+CLI/TUI/Pal regresyonu ve açık canlı smoke aracı. Canlı erişim denenmedi.
+6.1–6.5'in bu plandaki sınırlı sağlayıcı kapsamı tamamlandı; upstream opsiyonları
+ile birebir eşitlik anlamına gelmez. [Kabul ve farklar](docs/PROVIDER-CONFORMANCE.md).
 6.4 tamamlandı: model listeleri, private scope bağlı katalog, raporlanan limit/
 yetenek seçimi ve otomatik fallback reddi. Giriş token sayımı bu teslimde yok;
 [gerçek kapsam ve kabul](docs/MODEL-CATALOG.md). Canlı model çağrısı 0.

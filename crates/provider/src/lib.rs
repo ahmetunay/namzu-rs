@@ -5,6 +5,8 @@ pub mod aws;
 pub mod catalog;
 mod chat_stream;
 pub mod codex;
+#[cfg(test)]
+mod conformance;
 mod contract;
 mod http;
 mod native;

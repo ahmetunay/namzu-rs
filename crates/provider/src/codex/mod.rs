@@ -71,6 +71,22 @@ pub struct CodexProvider {
     metadata: Option<namzu_core::ResponseMetadata>,
 }
 impl CodexProvider {
+    // Test-only injection: production subscription endpoints remain fixed.
+    #[cfg(test)]
+    pub(crate) fn conformance_fixture(state: PathBuf, base: &str, model: &str) -> Self {
+        auth::save_fixture(&state, &auth::fixture_credential("conformance", 4102444800));
+        let mut provider = Self::new(state, model.into(), None).unwrap();
+        provider.endpoints = Endpoints {
+            auth: Url::parse(base).unwrap(),
+            api: Url::parse(&format!("{base}/")).unwrap(),
+        };
+        provider.http = Client::builder()
+            .no_proxy()
+            .redirect(Policy::none())
+            .build()
+            .unwrap();
+        provider
+    }
     pub fn new(
         state_dir: PathBuf,
         model: String,

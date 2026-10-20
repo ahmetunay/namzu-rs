@@ -143,8 +143,8 @@ Kaynak: `packages/providers/*/package.json` (10 paket).
 Buffered bildirir; streaming isteği reddedilir.
 [6.4 model keşfi ve limit seçimi](MODEL-CATALOG.md) metadata/açık katalog
 kapsamında tamamlandı; otomatik giriş token sayımı eklenmedi. Bütün yeni
-sürücülerde kapsamlı ortak conformance matrisi ve açık istekle canlı smoke
-6.5'tedir. Yeni provider/model
+sürücülerde ortak conformance matrisi ve açık canlı smoke koşucusu
+[6.5 kapsamında](PROVIDER-CONFORMANCE.md) eklendi; canlı erişim denenmedi. Yeni provider/model
 için canlı API erişimi bu teslimde kanıtlanmış sayılmaz.
 
 ## Deterministik doğrulama

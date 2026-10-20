@@ -91,7 +91,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   [desteklenen yollar ve eksikler](docs/NATIVE-PROVIDERS.md). 6.4 model keşfi,
   özel katalog seçimi ve raporlanan limit/yetenek doğrulaması eklendi;
   [kullanım ve giriş token sayımı sınırı](docs/MODEL-CATALOG.md).
-  Sırada ortak sağlayıcı conformance kontrolleri 6.5 var.
+  6.5 ortak sağlayıcı kabulü: 28 kombinasyonda aynı senaryolar ve açık canlı smoke
+  koşucusu; [matris ve sınırlar](docs/PROVIDER-CONFORMANCE.md).
+  Sırada telemetri/olay şeması 7.1 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
