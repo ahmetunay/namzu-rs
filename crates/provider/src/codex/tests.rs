@@ -640,3 +640,50 @@ fn malformed_or_incomplete_stream_never_returns_successful_metadata() {
         );
     }
 }
+
+#[test]
+fn selected_codex_catalogue_is_account_bound_without_an_implicit_api_fallback() {
+    let root = tempfile::tempdir().unwrap();
+    auth::save_fixture(
+        root.path(),
+        &auth::fixture_credential("first-account", 4102444800),
+    );
+    let (endpoints, server) = serve(vec![Box::new(|request| {
+        assert_eq!(request.path, "/api/models?client_version=1.0.0");
+        (
+            200,
+            "application/json",
+            json!({"models":[{"slug":"fixture","context_window":2048}]}).to_string(),
+        )
+    })]);
+    let mut p = CodexProvider::new(root.path().into(), "fixture".into(), None).unwrap();
+    p.endpoints = endpoints;
+    p.http = http();
+    let c = p.discover_models(&context()).unwrap();
+    server.join().unwrap();
+    let store = namzu_session::PrivateStore::open(root.path()).unwrap();
+    let id = p.save_catalog(&store, c, &context()).unwrap();
+    let cached = crate::catalog::Cached::read(&store, &id).unwrap();
+    let mut p = p.with_cached_catalog(cached).unwrap();
+    assert_eq!(p.model_metadata().unwrap().context_window, Some(2048));
+    assert!(p.route_identity(&context()).is_ok());
+    auth::save_fixture(
+        root.path(),
+        &auth::fixture_credential("other-account", 4102444800),
+    );
+    assert!(matches!(
+        p.route_identity(&context()),
+        Err(AgentError::Configuration(_))
+    ));
+    assert!(matches!(
+        p.complete(
+            &[Message::User {
+                content: "fixture".into()
+            }],
+            &[],
+            &context()
+        ),
+        Err(AgentError::Configuration(_))
+    ));
+    assert!(p.take_metadata().is_none());
+}

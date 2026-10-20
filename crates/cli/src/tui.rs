@@ -130,6 +130,10 @@ impl AgentHost {
                 route["provider"] == "codex"
                     && route["model"].as_str() == c.model.as_deref()
                     && route["endpoint"] == "https://chatgpt.com/backend-api/codex/"
+                    && route
+                        .get("model_catalog")
+                        .and_then(serde_json::Value::as_str)
+                        == c.model_catalog.as_deref()
             } else {
                 route == &crate::execute::api_identity(c)
             }

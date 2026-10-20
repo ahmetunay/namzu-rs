@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "provider": "openrouter",
+  "model": "MODELS_KOMUTUNDAKI_MODEL_ID",
+  "model_catalog": "c-0000000000000000000000000000000000000000000000000000000000000000",
+  "timeout": 300,
+  "api_options": {
+    "format": "auto",
+    "stream": false
+  }
+}

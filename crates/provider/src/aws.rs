@@ -62,6 +62,20 @@ impl Credentials {
         body: &[u8],
         timestamp: &str,
     ) -> Result<HeaderMap, AgentError> {
+        self.headers_for("POST", url, body, timestamp)
+    }
+    pub(crate) fn headers_for(
+        &self,
+        method: &str,
+        url: &Url,
+        body: &[u8],
+        timestamp: &str,
+    ) -> Result<HeaderMap, AgentError> {
+        if !["GET", "POST"].contains(&method) || url.query().is_some() {
+            return Err(AgentError::Configuration(
+                "unsupported AWS signing method/query",
+            ));
+        }
         if !timestamp.is_ascii()
             || timestamp.len() != 16
             || &timestamp[8..9] != "T"
@@ -99,7 +113,7 @@ impl Credentials {
                 }
             })
             .collect::<String>();
-        let request = format!("POST\n{path}\n\n{lines}\n{names}\n{payload}");
+        let request = format!("{method}\n{path}\n\n{lines}\n{names}\n{payload}");
         let scope = format!("{}/{}/bedrock/aws4_request", &timestamp[..8], self.region);
         let to_sign = format!(
             "AWS4-HMAC-SHA256\n{timestamp}\n{scope}\n{}",

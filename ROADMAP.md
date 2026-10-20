@@ -64,7 +64,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 3 | MCP | 3.1–3.8 tamam | Stdio/HTTP, güven/izin, entegrasyon, OAuth ve toparlanma |
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
-| 6 | Diğer model sağlayıcıları | 6.1–6.3 tamam; 6.4–6.5 sırada | Ortak sözleşme testleriyle ayrı sürücüler |
+| 6 | Diğer model sağlayıcıları | 6.1–6.4 tamam; 6.5 sırada | Ortak sözleşme testleriyle ayrı sürücüler |
 | 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
@@ -221,7 +221,13 @@ Yerel testler için ücretli ses hizmeti zorunlu değildir.
   Native SSE, OAuth/Vertex, AWS credential chain,
   LM Studio WebSocket ve diğer upstream opsiyonları uygulanmadı.
   [Kullanım, kabul ve açık farklar](docs/NATIVE-PROVIDERS.md).
-- **6.4** — Model keşfi, bağlam sınırları, açık sağlayıcı/model seçimi; sessiz ücretli fallback yok.
+- **6.4 — tamam (metadata ve açık seçim kapsamı)** — Bounded gerçek model
+  listeleri, Anthropic/Google atomic sayfalama, özel credential/account bağlı
+  katalog ID'si; exec/TUI/Pal exact seçim ve API çıktı/yetenek doğrulaması.
+  15 yeni Rust testi, toplam 583; fmt/Clippy/release, 18 katalog kabul grubu
+  ve 57 mevcut sağlayıcı/servis/TUI regresyon kontrolü geçti.
+  Giriş token sayacı/otomatik context garantisi
+  eklenmedi; Codex output wire'ı korunur. [Kullanım ve sınırlar](docs/MODEL-CATALOG.md).
 - **6.5** — Her sürücüye ortak sözleşme testleri; açık istekle canlı smoke testi.
 
 Başlamadan upstream paket envanteriyle tam sağlayıcı listesi netleştirilir.
@@ -254,7 +260,10 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 6.4 — model keşfi ve bağlam limitleri.**
+**Sıradaki iş: 6.5 — ortak sağlayıcı conformance kontrolleri.**
+6.4 tamamlandı: model listeleri, private scope bağlı katalog, raporlanan limit/
+yetenek seçimi ve otomatik fallback reddi. Giriş token sayımı bu teslimde yok;
+[gerçek kapsam ve kabul](docs/MODEL-CATALOG.md). Canlı model çağrısı 0.
 6.3 tamamlandı: altı ek servis, native JSON ve explicit AWS SigV4, CLI/TUI/Pal
 kabulü. Sınırlı transport kapsamıdır; upstream'in tüm opsiyonları taşınmış
 sayılmaz. [Eksikler ve kullanım](docs/NATIVE-PROVIDERS.md). Canlı çağrı 0.

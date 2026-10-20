@@ -7,6 +7,7 @@ mod execute;
 mod lsp;
 mod mcp;
 mod mcp_runtime;
+mod models;
 mod pals;
 mod sandbox;
 mod tui;
@@ -67,11 +68,8 @@ enum Command {
         #[command(subcommand)]
         action: AuthAction,
     },
-    /// Discover the signed-in Codex subscription's actual model catalogue.
-    Models {
-        #[arg(long)]
-        state_dir: Option<PathBuf>,
-    },
+    /// Explicit provider model discovery or offline saved-catalogue inspection.
+    Models(Box<models::ModelsArgs>),
     /// Deterministic benchmark harness.
     Bench {
         #[command(subcommand)]
@@ -462,24 +460,17 @@ fn main() -> ExitCode {
                 }
             };
         }
-        Command::Models { state_dir } => {
-            let result = (|| {
-                let driver = namzu_provider::codex::CodexProvider::new(
-                    state_dir.unwrap_or(namzu_session::default_state_dir()?),
-                    "catalogue".into(),
-                    None,
-                )?;
-                let models = driver.models(&namzu_core::TurnContext::new(
-                    std::time::Duration::from_secs(30),
-                    cancellation,
-                )?)?;
-                println!("{models}");
-                Ok::<_, namzu_core::AgentError>(())
-            })();
-            return match result {
-                Ok(()) => ExitCode::SUCCESS,
+        Command::Models(args) => {
+            return match models::run(*args, cancellation) {
+                Ok(value) => {
+                    println!("{value}");
+                    ExitCode::SUCCESS
+                }
                 Err(error) => {
-                    eprintln!("{error}");
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string(),"provider_error":error.provider_failure()})
+                    );
                     ExitCode::FAILURE
                 }
             };

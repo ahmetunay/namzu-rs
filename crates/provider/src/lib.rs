@@ -2,6 +2,7 @@
 //! retry, redirect or credential discovery. Native TLS uses inherited CA trust.
 mod api;
 pub mod aws;
+pub mod catalog;
 mod chat_stream;
 pub mod codex;
 mod contract;
@@ -21,6 +22,8 @@ const MAX_BODY: u64 = 4 * 1024 * 1024;
 pub struct OpenAiCompatible {
     client: Client,
     endpoint: Url,
+    base_url: Url,
+    selected_model: Option<catalog::Model>,
     authorization: Option<HeaderValue>,
     aws: Option<aws::Credentials>,
     model: String,
@@ -86,6 +89,7 @@ impl OpenAiCompatible {
                 "HTTPS required except on loopback",
             ));
         }
+        let base_url = endpoint.clone();
         {
             let mut path = endpoint
                 .path_segments_mut()
@@ -136,6 +140,8 @@ impl OpenAiCompatible {
         Ok(Self {
             client,
             endpoint,
+            base_url,
+            selected_model: None,
             authorization,
             aws: None,
             model,
@@ -252,7 +258,7 @@ pub fn decode_completion(value: &Value) -> Result<Completion, AgentError> {
 impl Provider for OpenAiCompatible {
     fn info(&self) -> namzu_core::ProviderInfo {
         use namzu_core::provider::{ProviderCapabilities, ProviderInfo, Streaming, Support};
-        ProviderInfo {
+        let mut info = ProviderInfo {
             contract_version: 1,
             provider: self.service.name().into(),
             model: Some(self.model.clone()),
@@ -271,7 +277,11 @@ impl Provider for OpenAiCompatible {
                     Streaming::Buffered
                 },
             },
+        };
+        if let Some(model) = &self.selected_model {
+            model.apply_capabilities(&mut info);
         }
+        info
     }
     fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
         self.metadata.take()

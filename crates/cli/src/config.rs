@@ -15,6 +15,8 @@ pub struct Config {
     )]
     pub api_options: namzu_provider::services::Options,
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_catalog: Option<String>,
     pub base_url: String,
     pub api_key_env: String,
     pub timeout: u64,
@@ -32,6 +34,7 @@ impl Default for Config {
             provider: "openai-compatible".into(),
             api_options: Default::default(),
             model: None,
+            model_catalog: None,
             base_url: "https://api.openai.com/v1".into(),
             api_key_env: "OPENAI_API_KEY".into(),
             timeout: 300,
@@ -51,6 +54,13 @@ impl Config {
             return Err(AgentError::Configuration(
                 "Codex does not accept API service options",
             ));
+        }
+        if self
+            .model_catalog
+            .as_ref()
+            .is_some_and(|s| !namzu_provider::catalog::Cached::valid_id(s))
+        {
+            return Err(AgentError::Configuration("invalid model catalogue ID"));
         }
         if self.version != 1
             || !(1..=86400).contains(&self.timeout)

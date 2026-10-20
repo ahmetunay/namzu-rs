@@ -23,7 +23,8 @@ edilir. Proxy/CA/TLS doğrulaması korunur, yönlendirme/retry/fallback yoktur.
 ## Açık seçim ve ayarlar
 
 Model adı zorunludur; otomatik model keşfi ve model başına kapasite kataloğu
-6.4'tedir. Anahtarı komut satırına koyma; seçilen ortam değişkenini kendi
+6.4'te eklendi: [model kataloğu ve limitlerin kapsamı](MODEL-CATALOG.md).
+Otomatik giriş token sayımı eklenmedi. Anahtarı komut satırına koyma; seçilen ortam değişkenini kendi
 ortamında ayarla. Aşağıdaki komut gerçek hizmet isteği yapar:
 
 ```sh
@@ -142,5 +143,5 @@ Native SSE/Bedrock EventStream, Google OAuth/Vertex, Anthropic OAuth, AWS
 profile/SSO/IMDS, LM Studio WebSocket, hosted search, documents/citations,
 structured-output seçenekleri, prompt-cache marker ayarları ve bütün upstream
 opsiyonları bu teslimde uygulanmadı. Bunlar karşılaştırma için açık farklardır;
-6.4 model keşfi, 6.5 ortak conformance/canlı smoke planı bu kapsamı tamamlanmış
+6.4 model metadata/keşfi bu farkları kapatmaz. 6.5 ortak conformance/canlı smoke planı bu kapsamı tamamlanmış
 özellikler gibi göstermemelidir.

@@ -18,7 +18,8 @@ Responses kullanır; diğer adlar Chat kullanır. `claude-*` ve `gemini-*`
 auto seçiminde 6.3 ile native buffered Messages/Google sürücüsünü seçer;
 bu modellerde `--api-stream true` reddedilir.
 [Native sürücülerin kapsamı](NATIVE-PROVIDERS.md). OpenRouter'da model adı sağlayıcının tam slug'ıdır.
-Dinamik model keşfi/bağlam kataloğu 6.4 kapsamındadır.
+Dinamik model keşfi/raporlanan limit kataloğu 6.4'te eklendi;
+[kullanım ve token sayımı sınırı](MODEL-CATALOG.md).
 
 ## CLI ve kalıcı ayar
 

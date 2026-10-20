@@ -18,7 +18,7 @@ pub struct ExecArgs {
     pub json: bool,
 }
 
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Default)]
 pub struct RunOptions {
     #[command(flatten)]
     pub capabilities: crate::capability_runtime::Selection,
@@ -33,6 +33,9 @@ pub struct RunOptions {
     pub mcp_approve: bool,
     #[arg(long)]
     pub model: Option<String>,
+    /// Select a saved provider/account-bound catalogue; never refreshes implicitly.
+    #[arg(long)]
+    pub model_catalog: Option<String>,
     #[arg(long)]
     pub provider: Option<String>,
     #[arg(long)]
@@ -335,6 +338,30 @@ pub(crate) enum Driver {
     Codex(Box<namzu_provider::codex::CodexProvider>),
 }
 pub(crate) fn driver_for(args: &RunOptions, config: &Config) -> Result<Driver, AgentError> {
+    let driver = driver_unchecked(args, config)?;
+    if let Some(id) = &config.model_catalog {
+        let store = PrivateStore::open(args.state_dir.clone().map_or_else(default_state_dir, Ok)?)?;
+        let cached = namzu_provider::catalog::Cached::read(&store, id)?;
+        let model = cached
+            .catalog
+            .select(
+                config
+                    .model
+                    .as_deref()
+                    .ok_or(AgentError::Configuration("model required"))?,
+            )?
+            .clone();
+        return match driver {
+            Driver::Api(p) => {
+                p.require_catalog(&cached, &config.api_key_env)?;
+                Ok(Driver::Api(Box::new(p.with_model(model)?)))
+            }
+            Driver::Codex(p) => Ok(Driver::Codex(Box::new(p.with_cached_catalog(cached)?))),
+        };
+    }
+    Ok(driver)
+}
+fn driver_unchecked(args: &RunOptions, config: &Config) -> Result<Driver, AgentError> {
     let model = config.model.clone().ok_or(AgentError::Configuration(
         "model required via --model or selected config",
     ))?;
@@ -398,6 +425,9 @@ pub(crate) fn driver_for(args: &RunOptions, config: &Config) -> Result<Driver, A
     }
 }
 pub(crate) fn api_identity(config: &Config) -> serde_json::Value {
+    if config.model_catalog.is_some() {
+        return serde_json::json!({"provider":config.provider,"base_url":config.base_url,"model":config.model,"api_key_env":config.api_key_env,"api_options":config.api_options,"model_catalog":config.model_catalog});
+    }
     if config.provider == "openai-compatible" && config.api_options.is_default() {
         serde_json::json!([config.provider, config.base_url, config.model])
     } else {
@@ -412,7 +442,15 @@ impl Driver {
     ) -> Result<String, AgentError> {
         context.remaining()?;
         if let Self::Codex(driver) = self {
-            driver.route_identity(&context.child(Duration::from_secs(30))?)
+            let route = driver.route_identity(&context.child(Duration::from_secs(30))?)?;
+            if let Some(id) = &config.model_catalog {
+                let mut value: serde_json::Value = serde_json::from_str(&route)
+                    .map_err(|_| AgentError::Protocol("invalid Codex route"))?;
+                value["model_catalog"] = id.clone().into();
+                Ok(value.to_string())
+            } else {
+                Ok(route)
+            }
         } else {
             Ok(api_identity(config).to_string())
         }
@@ -493,6 +531,19 @@ impl namzu_core::Observer for PresentationObserver<'_, '_> {
 }
 
 pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Config, AgentError> {
+    config_inner(args, store, true)
+}
+pub(crate) fn config_for_discovery(
+    args: &RunOptions,
+    store: &PrivateStore,
+) -> Result<Config, AgentError> {
+    config_inner(args, store, false)
+}
+fn config_inner(
+    args: &RunOptions,
+    store: &PrivateStore,
+    select_catalog: bool,
+) -> Result<Config, AgentError> {
     let mut c = Config::load(store, args.config.as_deref())?;
     if let Some(v) = &args.model {
         c.model = Some(v.clone());
@@ -570,7 +621,42 @@ pub(crate) fn config_for(args: &RunOptions, store: &PrivateStore) -> Result<Conf
     {
         c.api_options.reasoning_effort = Some(effort.clone());
     }
+    if let Some(id) = &args.model_catalog {
+        c.model_catalog = Some(id.clone());
+    }
+    if !select_catalog {
+        c.model_catalog = None;
+        c.model = Some("catalogue".into());
+        c.api_options = namzu_provider::services::Options {
+            aws_region: c.api_options.aws_region.clone(),
+            bedrock_auth: c.api_options.bedrock_auth.clone(),
+            ..Default::default()
+        };
+    }
     c.validate()?;
+    if select_catalog && let Some(id) = &c.model_catalog {
+        let cached = namzu_provider::catalog::Cached::read(store, id)?;
+        cached.require_route(
+            &c.provider,
+            if c.provider == "codex" {
+                "https://chatgpt.com/backend-api/codex/"
+            } else {
+                &c.base_url
+            },
+            if c.provider == "codex" {
+                "subscription"
+            } else {
+                &c.api_key_env
+            },
+        )?;
+        if let Some(model) = &c.model {
+            let record = cached.catalog.select(model)?;
+            if c.provider != "codex" {
+                c.api_options.max_output_tokens =
+                    Some(record.output_budget(c.api_options.max_output_tokens)?);
+            }
+        }
+    }
     if c.provider != "codex" {
         let service = namzu_provider::services::Service::parse(&c.provider)?;
         if let Some(model) = &c.model {

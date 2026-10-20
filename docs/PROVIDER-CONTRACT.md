@@ -140,8 +140,11 @@ Kaynak: `packages/providers/*/package.json` (10 paket).
 
 6.3 sürücülerinin sınırları ve uygulanmamış upstream opsiyonları
 [Native sağlayıcılar](NATIVE-PROVIDERS.md) belgesindedir. Native sürücüler
-Buffered bildirir; streaming isteği reddedilir. Model keşfi/context limitleri 6.4, bütün yeni sürücülerde kapsamlı ortak
-conformance matrisi ve açık istekle canlı smoke 6.5'tedir. Yeni provider/model
+Buffered bildirir; streaming isteği reddedilir.
+[6.4 model keşfi ve limit seçimi](MODEL-CATALOG.md) metadata/açık katalog
+kapsamında tamamlandı; otomatik giriş token sayımı eklenmedi. Bütün yeni
+sürücülerde kapsamlı ortak conformance matrisi ve açık istekle canlı smoke
+6.5'tedir. Yeni provider/model
 için canlı API erişimi bu teslimde kanıtlanmış sayılmaz.
 
 ## Deterministik doğrulama

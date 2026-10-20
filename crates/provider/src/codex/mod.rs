@@ -62,6 +62,8 @@ fn read_json(response: Response, context: &TurnContext) -> Result<Value, AgentEr
 pub struct CodexProvider {
     state_dir: PathBuf,
     model: String,
+    selected_model: Option<crate::catalog::Model>,
+    selected_catalog: Option<crate::catalog::Cached>,
     effort: Option<String>,
     endpoints: Endpoints,
     http: Client,
@@ -90,6 +92,8 @@ impl CodexProvider {
         Ok(Self {
             state_dir,
             model,
+            selected_model: None,
+            selected_catalog: None,
             effort,
             endpoints: Endpoints::production(),
             http: client()?,
@@ -99,9 +103,12 @@ impl CodexProvider {
     }
     pub fn route_identity(&self, context: &TurnContext) -> Result<String, AgentError> {
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
+        if let Some(cached) = &self.selected_catalog {
+            cached.verify_binding(&self.binding_for(&credential.account_id)?)?;
+        }
         serde_json::to_string(&json!({"provider":"codex","endpoint":self.endpoints.api.as_str(),"model":self.model,"account":credential.account_id})).map_err(|_|AgentError::Protocol("cannot encode Codex route"))
     }
-    pub fn models(&self, context: &TurnContext) -> Result<Value, AgentError> {
+    fn models_json(&self, context: &TurnContext) -> Result<Value, AgentError> {
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
         let response = self.http.send(
             self.request(
@@ -114,7 +121,79 @@ impl CodexProvider {
             .timeout(context.remaining()?),
             context,
         )?;
-        let body = read_json(response, context)?;
+        read_json(response, context)
+    }
+    pub fn discover_models(
+        &self,
+        context: &TurnContext,
+    ) -> Result<crate::catalog::Catalog, AgentError> {
+        let catalog = crate::catalog::codex_catalog(
+            &self.models_json(context)?,
+            self.endpoints.api.as_str(),
+        )?;
+        context.remaining()?;
+        Ok(catalog)
+    }
+    pub fn save_catalog(
+        &self,
+        store: &namzu_session::PrivateStore,
+        catalog: crate::catalog::Catalog,
+        context: &TurnContext,
+    ) -> Result<String, AgentError> {
+        if catalog.provider != "codex"
+            || crate::catalog::canonical_base(&catalog.base_url)?
+                != crate::catalog::canonical_base(self.endpoints.api.as_str())?
+        {
+            return Err(AgentError::Configuration("Codex catalogue route differs"));
+        }
+        crate::catalog::Cached::save(
+            store,
+            catalog,
+            "subscription".into(),
+            self.catalog_binding(context)?,
+        )
+    }
+    pub fn require_catalog(
+        &self,
+        cached: &crate::catalog::Cached,
+        context: &TurnContext,
+    ) -> Result<(), AgentError> {
+        cached.require_route("codex", self.endpoints.api.as_str(), "subscription")?;
+        cached.verify_binding(&self.catalog_binding(context)?)
+    }
+    fn binding_for(&self, account: &str) -> Result<Value, AgentError> {
+        Ok(
+            json!({"provider":"codex","base_url":crate::catalog::canonical_base(self.endpoints.api.as_str())?,"account":account}),
+        )
+    }
+    fn catalog_binding(&self, context: &TurnContext) -> Result<Value, AgentError> {
+        let c = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
+        self.binding_for(&c.account_id)
+    }
+    pub fn with_cached_catalog(
+        mut self,
+        cached: crate::catalog::Cached,
+    ) -> Result<Self, AgentError> {
+        cached.require_route("codex", self.endpoints.api.as_str(), "subscription")?;
+        self.selected_model = Some(cached.catalog.select(&self.model)?.clone());
+        self.selected_catalog = Some(cached);
+        Ok(self)
+    }
+    pub fn with_model(mut self, model: crate::catalog::Model) -> Result<Self, AgentError> {
+        model.validate()?;
+        if !model.matches(&self.model) {
+            return Err(AgentError::Configuration(
+                "Codex model differs from selected catalogue record",
+            ));
+        }
+        self.selected_model = Some(model);
+        Ok(self)
+    }
+    pub fn model_metadata(&self) -> Option<&crate::catalog::Model> {
+        self.selected_model.as_ref()
+    }
+    pub fn models(&self, context: &TurnContext) -> Result<Value, AgentError> {
+        let body = self.models_json(context)?;
         let models=body["models"].as_array().ok_or(AgentError::Protocol("missing model catalogue"))?.iter().filter(|model|!matches!(model["visibility"].as_str(),Some("hide"|"hidden")))
             .filter_map(|model|model["slug"].as_str().filter(|slug|!slug.is_empty() && slug.len()<=256).map(|slug|json!({"id":slug,"name":model["display_name"],"reasoning_levels":model["supported_reasoning_levels"],"default_reasoning":model["default_reasoning_level"]}))).collect::<Vec<_>>();
         Ok(json!({"provider":"codex","models":models}))
@@ -167,7 +246,7 @@ pub(crate) fn encode_input_for(
 impl Provider for CodexProvider {
     fn info(&self) -> namzu_core::ProviderInfo {
         use namzu_core::provider::{ProviderCapabilities, ProviderInfo, Streaming, Support};
-        ProviderInfo {
+        let mut info = ProviderInfo {
             contract_version: 1,
             provider: "codex".into(),
             model: Some(self.model.clone()),
@@ -178,7 +257,11 @@ impl Provider for CodexProvider {
                 usage: Support::Supported,
                 streaming: Streaming::Incremental,
             },
+        };
+        if let Some(model) = &self.selected_model {
+            model.apply_capabilities(&mut info);
         }
+        info
     }
     fn take_metadata(&mut self) -> Option<namzu_core::ResponseMetadata> {
         self.metadata.take()
@@ -206,6 +289,9 @@ impl Provider for CodexProvider {
         self.metadata = None;
         namzu_core::provider::validate_request(messages, tools, &self.info(), context)?;
         let credential = auth::ensure_fresh(&self.state_dir, &self.endpoints, &self.http, context)?;
+        if let Some(cached) = &self.selected_catalog {
+            cached.verify_binding(&self.binding_for(&credential.account_id)?)?;
+        }
         let route=serde_json::to_string(&json!({"provider":"codex","endpoint":self.endpoints.api.as_str(),"model":self.model,"account":credential.account_id})).map_err(|_|AgentError::Protocol("cannot encode Codex route"))?;
         let instructions = messages
             .iter()

@@ -88,7 +88,10 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   opt-in SSE, private reasoning replay ve raporlanan ücret desteği var;
   [kapsam ve kullanım](docs/COMPATIBLE-SERVICES.md). 6.3 ile Anthropic/Google/
   Bedrock/Ollama native JSON, DeepSeek Chat ve LM Studio HTTP profilleri eklendi;
-  [desteklenen yollar ve eksikler](docs/NATIVE-PROVIDERS.md). Sırada model keşfi 6.4 var.
+  [desteklenen yollar ve eksikler](docs/NATIVE-PROVIDERS.md). 6.4 model keşfi,
+  özel katalog seçimi ve raporlanan limit/yetenek doğrulaması eklendi;
+  [kullanım ve giriş token sayımı sınırı](docs/MODEL-CATALOG.md).
+  Sırada ortak sağlayıcı conformance kontrolleri 6.5 var.
 
 ## 0.3 — özel durum ve oturum devamı
 
