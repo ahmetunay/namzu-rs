@@ -159,5 +159,6 @@ build, 5 Python rapor testi ve 9 release eval kabul grubu. Özgün ajan ölçüm
 ## Ek kör görev — jobq
 
 Kullanıcının yeni task paketinde iki ajan birer kez çalıştırıldı. Teslimler
-checker gelmeden hash ile sabitlendi; doğruluk henüz değerlendirilmedi.
-[Ölçümler ve checker bekleyen kayıt](JOBQ-BENCH.md).
+checker gelmeden hash ile sabitlendi. Sonradan sağlanan bağımsız checker ile
+iki ajan da 8/8 görünür + 31/31 gizli testi geçti; ilk süre/RSS kayıtları korundu.
+[Ölçümler, kalibrasyon ve checker sonucu](JOBQ-BENCH.md).
