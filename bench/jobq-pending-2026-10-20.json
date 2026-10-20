@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "kind": "jobq_blind_submission",
+  "status": "agent_runs_complete",
+  "evaluation_status": "awaiting_checker",
+  "model": "gpt-6-luna",
+  "effort": "low",
+  "timeout_seconds": 300,
+  "repeats": 1,
+  "sequential": true,
+  "order_method": "seeded_random_shuffle",
+  "order_seed": 5547025712266442829,
+  "order": [
+    "jcode",
+    "namzu-rs"
+  ],
+  "task_archive_sha256": "23e7eb117fa4476ad7a884a0acaedb4a92047768ff7d5d16b12bfb290b500ab2",
+  "prompt_sha256": "0f78f1b010dae074b092b2a310bbc540055efec973243ac9b3ccba258b0b999f",
+  "input_manifest_sha256": "176966e7c78462f5266c76f69a67dc7e5157b3da7cfa7d75a008155e6f987c08",
+  "first_model_request_ms": null,
+  "first_model_request_unavailable_reason": "No equivalent request-dispatch instrumentation in both agents; not inferred from output.",
+  "rss_tree_scope": "Sum of RSS for root and observed recursive descendants sampled every 100 ms; shared pages double-counted, short peaks/escaped or reparented descendants may be missed.",
+  "runs": [
+    {
+      "agent": "jcode",
+      "execution_index": 0,
+      "started_utc": "2026-10-20T10:58:15.304520+00:00",
+      "finished_utc": "2026-10-20T10:59:32.776274+00:00",
+      "status": "exited",
+      "evaluation_status": "awaiting_checker",
+      "elapsed_ms": 77468.362,
+      "exit_code": 0,
+      "peak_wait4_rss_kib": 47736,
+      "sampled_peak_tree_rss_kib": 71812.0,
+      "tree_rss_samples": 753,
+      "program_sha256": "059d05f0a167b5496bc5a7bdf963edff8f8a483d61f290847b5765104c476298",
+      "provider_calls": null,
+      "tool_calls": null,
+      "reported_token_usage": {
+        "input_tokens": 13224,
+        "output_tokens": 113,
+        "cache_read_input_tokens": 12288,
+        "cache_creation_input_tokens": 0
+      },
+      "visible_tests_unchanged": true,
+      "submission_zip_sha256": "2c1ff606e3b2b7dc8b50dcb0c8e0dedf24ac7a0723985ea0eea5b3b8f4a8329d",
+      "changed_files": [
+        "jobq/cli.py",
+        "jobq/jobqueue.py",
+        "jobq/store.py"
+      ]
+    },
+    {
+      "agent": "namzu-rs",
+      "execution_index": 1,
+      "started_utc": "2026-10-20T10:59:32.778665+00:00",
+      "finished_utc": "2026-10-20T11:00:11.724326+00:00",
+      "status": "exited",
+      "evaluation_status": "awaiting_checker",
+      "elapsed_ms": 38942.01,
+      "exit_code": 0,
+      "peak_wait4_rss_kib": 15108,
+      "sampled_peak_tree_rss_kib": 28692.0,
+      "tree_rss_samples": 379,
+      "program_sha256": "ac6749217e6206ac0a7f27b1b990cf4a07bbcd08b1cf6d6eb7c54606de9f6933",
+      "provider_calls": 16,
+      "tool_calls": 15,
+      "reported_token_usage": {
+        "cached_input_tokens": {
+          "samples": 16,
+          "sum": 9472
+        },
+        "estimated_cost_nano_usd": null,
+        "input_tokens": {
+          "samples": 16,
+          "sum": 64270
+        },
+        "output_tokens": {
+          "samples": 16,
+          "sum": 2171
+        },
+        "reasoning_tokens": {
+          "samples": 16,
+          "sum": 0
+        },
+        "reported_cost_nano_usd": null,
+        "responses": 16,
+        "total_tokens": {
+          "samples": 16,
+          "sum": 66441
+        }
+      },
+      "visible_tests_unchanged": true,
+      "submission_zip_sha256": "974f271c0aef624eec1b2a9bef0a352a21f7b1a5a15a7f525b2b4a8b0b087807",
+      "changed_files": [
+        "jobq/cli.py",
+        "jobq/jobqueue.py",
+        "jobq/store.py"
+      ]
+    }
+  ],
+  "provenance": {
+    "namzu_source_commit": "cc91dc00bc64119a06a1547b605e52141d414eb2",
+    "jcode_version": "0.98.1",
+    "jcode_revision": "1c7426eb1",
+    "jcode_binary_sha256": "bc1646f4b2f35cd259f01c6419ba95a54f47af821838bbee8f62f34452b2a567",
+    "supervisor_sha256": "491fbe9458d5b05a396d33f3a3e2a60be3863e80b0ffd995b3acb244673a2b37",
+    "supervisor_python_version": "3.12.14",
+    "psutil_version": "7.2.2"
+  },
+  "usage_notes": {
+    "namzu-rs": "SDK UsageTotals aggregates values over reported responses; per-field samples show coverage.",
+    "jcode": "Raw CLI usage fields; cumulative coverage across all requests is unverified. These values must not be compared as equal-scope total consumption."
+  },
+  "ready_turns_this_experiment": 0,
+  "warmup_policy": "No additional READY calls; existing authenticated profiles reused. No cold/warm startup isolation claimed.",
+  "permissions": {
+    "profile": "host-read-write-shell",
+    "declared_only": true,
+    "namzu_tools": [
+      "read_file",
+      "list_files",
+      "search_files",
+      "write_file",
+      "apply_patch",
+      "shell"
+    ],
+    "jcode_tools": [
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "glob",
+      "grep"
+    ]
+  }
+}

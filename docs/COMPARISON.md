@@ -155,3 +155,9 @@ Küçük örneklemden istatistiksel üstünlük veya programlama dilinin etkisi 
 Son doğrulama: **652 Rust testi**, format, Clippy `-D warnings`, release workspace
 build, 5 Python rapor testi ve 9 release eval kabul grubu. Özgün ajan ölçümleri
 üstünde yeni inference yapılmadan 20/20 orakl yeniden kontrolü gerçekleştirildi.
+
+## Ek kör görev — jobq
+
+Kullanıcının yeni task paketinde iki ajan birer kez çalıştırıldı. Teslimler
+checker gelmeden hash ile sabitlendi; doğruluk henüz değerlendirilmedi.
+[Ölçümler ve checker bekleyen kayıt](JOBQ-BENCH.md).
