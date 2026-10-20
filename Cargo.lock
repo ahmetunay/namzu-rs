@@ -1293,6 +1293,7 @@ dependencies = [
  "namzu-provider",
  "namzu-sandbox",
  "namzu-session",
+ "namzu-telemetry",
  "namzu-tools",
  "namzu-tui",
  "serde",
@@ -1420,6 +1421,18 @@ dependencies = [
  "namzu-core",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "namzu-telemetry"
+version = "0.1.0"
+dependencies = [
+ "namzu-core",
+ "namzu-session",
+ "serde",
+ "serde_json",
+ "sha2",
  "tempfile",
 ]
 

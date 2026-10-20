@@ -10,6 +10,7 @@ name = "namzu-rs"
 path = "src/main.rs"
 
 [dependencies]
+namzu-telemetry.workspace = true
 namzu-capabilities.workspace = true
 namzu-sandbox.workspace = true
 namzu-core.workspace = true

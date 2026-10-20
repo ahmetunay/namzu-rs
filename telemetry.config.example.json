@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "telemetry": true,
+  "provider": "openai-compatible",
+  "model": "MODEL_ID",
+  "base_url": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "timeout": 300
+}

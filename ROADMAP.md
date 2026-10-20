@@ -65,7 +65,7 @@ planın birebir arşivi değildir. Yüzdelik tamamlanma iddiası yoktur.
 | 4 | Tarayıcı / bilgisayar kontrolü | 4.1–4.4 tamam | İzole bilgisayarda tarayıcı ve görsel eylemler |
 | 5 | Dosya, ses, LSP ve sandbox paketleri | 5.1–5.5 tamam | Gelişmiş yetenek paketlerinin SDK/terminal entegrasyonu |
 | 6 | Diğer model sağlayıcıları | 6.1–6.5 plan kapsamı tamam | Ortak sözleşme testleriyle ayrı sürücüler |
-| 7 | Telemetri, AG-UI ve değerlendirme | Eksik | Redakte olaylar ve tekrar üretilebilir raporlar |
+| 7 | Telemetri, AG-UI ve değerlendirme | 7.1 tamam; 7.2–7.4 sırada | Redakte olaylar ve tekrar üretilebilir raporlar |
 | 8 | Masaüstü uygulaması | Eksik | SDK üstünde çalışan masaüstü akışları |
 
 Bağımlılıklar nedeniyle tek Codex sağlayıcısı 0'da, temel container/sandbox
@@ -240,7 +240,13 @@ Anahtarın varlığı servis/model erişimini kanıtlamaz.
 
 ## 7. Telemetri, AG-UI ve değerlendirme araçları
 
-- **7.1** — Ortak olay şeması, trace/ölçümler, kimlik bilgisi ve içerik redaksiyonu.
+- **7.1 — tamam (yerel trace kapsamı)** — Bağımsız telemetry SDK; typed içeriksiz
+  şema, turn/provider/tool span'ları, token/ücret kapsaması ve süre/sayaçlar.
+  Opt-in özel pending/final kayıt, exec/TUI/Pal onay ve iptal zinciri, offline
+  list/show. 19 yeni Rust testi, toplam 615; 13 release CLI/PTY kabul grubu,
+  75 mevcut provider/servis/katalog/TUI ve 4 Pal PTY regresyon kontrolü.
+  fmt/Clippy/release geçti. OTLP/exporter ve geçmiş session export'u eklenmedi.
+  [Kapsam, kullanım ve hata davranışı](docs/TELEMETRY.md).
 - **7.2** — AG-UI: mesaj/araç/ilerleme olayları, iptal ve istemci entegrasyonu.
 - **7.3** — Deterministik eval görevleri, dosya/test oraklları ve başarısızlık sınıfları.
 - **7.4** — Jcode/Namzu karşılaştırması: aynı model/görev/izin/300 saniye bütçe,
@@ -265,7 +271,11 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 7.1 — ortak olay şeması ve redakte telemetri.**
+**Sıradaki iş: 7.2 — AG-UI olay eşlemesi ve istemci entegrasyonu.**
+7.1 tamamlandı: içeriksiz ortak trace/ölçüm SDK'sı, opt-in özel yerel kayıt,
+normal/Pal terminalde izin/iptal zinciri ve offline inceleme. Kayıt sınırları,
+çökmede pending işareti ve publication hatası davranışı açıklandı;
+[kabul ve upstream farkları](docs/TELEMETRY.md). Canlı model çağrısı 0.
 6.5 tamamlandı: tüm mevcut sürücülere aynı 13 senaryo/28 kombinasyon matrisi,
 CLI/TUI/Pal regresyonu ve açık canlı smoke aracı. Canlı erişim denenmedi.
 6.1–6.5'in bu plandaki sınırlı sağlayıcı kapsamı tamamlandı; upstream opsiyonları

@@ -490,6 +490,37 @@ fn execute_run(
     limits: Limits,
     observer: &mut impl Observer,
 ) -> Result<Turn, AgentError> {
+    let c = o.config()?;
+    let store = PrivateStore::open(o.state()?)?;
+    let mut trace = if c.telemetry {
+        Some(namzu_telemetry::LocalTrace::start(
+            &store,
+            namzu_telemetry::Source::Pal,
+        )?)
+    } else {
+        None
+    };
+    let result = execute_run_inner(
+        o,
+        registry,
+        run,
+        ctx,
+        limits,
+        &mut namzu_telemetry::Observed {
+            inner: observer,
+            recorder: trace.as_mut().map(|t| &mut t.recorder),
+        },
+    );
+    namzu_telemetry::finish_result(&mut trace, result)
+}
+fn execute_run_inner(
+    o: &PalOptions,
+    registry: &Registry,
+    run: PalRun<'_>,
+    ctx: &TurnContext,
+    limits: Limits,
+    observer: &mut impl Observer,
+) -> Result<Turn, AgentError> {
     let pal = run.definition().clone();
     let (mut driver, c, profile) = o.runtime(&pal, ctx)?;
     let tool_policy = policy(&o.run, &c);

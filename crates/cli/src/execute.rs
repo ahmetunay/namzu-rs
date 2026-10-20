@@ -20,6 +20,9 @@ pub struct ExecArgs {
 
 #[derive(Args, Clone, Default)]
 pub struct RunOptions {
+    /// Opt in/out of content-free private local telemetry; never exports to a server.
+    #[arg(long, action=clap::ArgAction::Set, num_args=0..=1, default_missing_value="true", require_equals=true)]
+    pub telemetry: Option<bool>,
     #[command(flatten)]
     pub capabilities: crate::capability_runtime::Selection,
     #[command(flatten)]
@@ -89,6 +92,7 @@ pub struct RunOptions {
 
 pub struct Execution {
     pub session_id: Option<String>,
+    pub telemetry_id: Option<String>,
     pub result: Result<Turn, AgentError>,
 }
 pub fn execute(args: ExecArgs, cancellation: Cancellation) -> Execution {
@@ -108,10 +112,26 @@ pub fn execute_observed(
 ) -> Execution {
     let started = Instant::now();
     let mut session_id = None;
+    let mut trace = None;
     let result = (|| {
         let state_dir = args.state_dir.clone().unwrap_or(default_state_dir()?);
         let store = PrivateStore::open(&state_dir)?;
         let mut config = config_for(&args, &store)?;
+        if config.telemetry {
+            trace = Some(namzu_telemetry::LocalTrace::start(
+                &store,
+                if events.supports_approval() {
+                    namzu_telemetry::Source::Tui
+                } else {
+                    namzu_telemetry::Source::Exec
+                },
+            )?);
+        }
+        let mut tapped = namzu_telemetry::Tap {
+            inner: events,
+            recorder: trace.as_mut().map(|t| &mut t.recorder),
+        };
+        let events = &mut tapped as &mut dyn namzu_core::EventSink;
 
         let cwd = args
             .cwd
@@ -330,7 +350,15 @@ pub fn execute_observed(
         session.save(&store)?;
         turn
     })();
-    Execution { session_id, result }
+    let result = namzu_telemetry::finish_result(&mut trace, result);
+    let telemetry_id = trace
+        .as_ref()
+        .map(|t| t.recorder.snapshot().trace_id.as_str().to_owned());
+    Execution {
+        session_id,
+        telemetry_id,
+        result,
+    }
 }
 
 pub(crate) enum Driver {
@@ -545,6 +573,9 @@ fn config_inner(
     select_catalog: bool,
 ) -> Result<Config, AgentError> {
     let mut c = Config::load(store, args.config.as_deref())?;
+    if let Some(enabled) = args.telemetry {
+        c.telemetry = enabled;
+    }
     if let Some(v) = &args.model {
         c.model = Some(v.clone());
     }

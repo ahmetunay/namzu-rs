@@ -10,6 +10,7 @@ mod mcp_runtime;
 mod models;
 mod pals;
 mod sandbox;
+mod telemetry;
 mod tui;
 use clap::{Parser, Subcommand};
 use namzu_core::{Cancellation, Completion, Limits, ScriptedProvider, ToolCall, Turn};
@@ -26,6 +27,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect content-free private local traces offline.
+    Telemetry(Box<telemetry::Args>),
     /// Inspect selected capability/tool permissions offline or manage a retained exec computer.
     Capabilities(Box<capability_runtime::CapabilityArgs>),
     /// Explicit owned Docker sandbox policies and bounded offline operations.
@@ -308,7 +311,22 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let started = Instant::now();
-    let (json_output, offline, session_id, result) = match cli.command {
+    let (json_output, offline, session_id, telemetry_id, result) = match cli.command {
+        Command::Telemetry(args) => {
+            return match telemetry::run(*args) {
+                Ok(value) => {
+                    println!("{value}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({"format_version":1,"status":"error","error":error.to_string()})
+                    );
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Capabilities(args) => {
             return match capability_runtime::inspect(*args, cancellation) {
                 Ok(value) => {
@@ -479,6 +497,7 @@ fn main() -> ExitCode {
             json,
             true,
             None,
+            None,
             offline_demo(cancellation).map_err(|e| (e, None)),
         ),
         Command::Exec(args) => {
@@ -488,6 +507,7 @@ fn main() -> ExitCode {
                 json,
                 false,
                 result.session_id,
+                result.telemetry_id,
                 result
                     .result
                     .map_err(|e| (e.to_string(), e.provider_failure().cloned())),
@@ -518,7 +538,7 @@ fn main() -> ExitCode {
             if json_output {
                 println!(
                     "{}",
-                    json!({"format_version":1,"status":"ok","output":turn.output,"stats":turn.stats,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
+                    json!({"format_version":1,"status":"ok","output":turn.output,"stats":turn.stats,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id,"telemetry_id":telemetry_id})
                 );
             } else {
                 println!("{}", turn.output);
@@ -529,7 +549,7 @@ fn main() -> ExitCode {
             if json_output {
                 println!(
                     "{}",
-                    json!({"format_version":1,"status":"error","error":error,"provider_error":provider_error,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id})
+                    json!({"format_version":1,"status":"error","error":error,"provider_error":provider_error,"elapsed_ms":elapsed_ms,"offline":offline,"session_id":session_id,"telemetry_id":telemetry_id})
                 );
             } else {
                 eprintln!("{error}");

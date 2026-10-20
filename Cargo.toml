@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals", "crates/computer", "crates/mcp", "crates/audio", "crates/lsp", "crates/sandbox", "crates/capabilities"]
+members = ["crates/core", "crates/tools", "crates/provider", "crates/cli", "crates/session", "crates/bench", "crates/tui", "crates/pals", "crates/computer", "crates/mcp", "crates/audio", "crates/lsp", "crates/sandbox", "crates/capabilities", "crates/telemetry"]
 resolver = "2"
 
 [workspace.package]
@@ -9,6 +9,7 @@ license = "FSL-1.1-MIT"
 publish = false
 
 [workspace.dependencies]
+namzu-telemetry = { path = "crates/telemetry" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 thiserror = "2"

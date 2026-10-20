@@ -6,6 +6,8 @@ use std::{collections::BTreeSet, io::Read, path::Path};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub telemetry: bool,
     pub version: u32,
     pub capabilities: namzu_capabilities::Config,
     pub provider: String,
@@ -29,6 +31,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            telemetry: false,
             version: 1,
             capabilities: Default::default(),
             provider: "openai-compatible".into(),
