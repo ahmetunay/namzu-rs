@@ -262,6 +262,9 @@ Anahtarın varlığı servis/model erişimini kanıtlamaz.
   [Kullanım, rapor geçişi ve sınırlar](docs/EVALS.md).
 - **7.4** — Jcode/Namzu karşılaştırması: aynı model/görev/izin/300 saniye bütçe,
 sıralı koşum, tekrarlar; doğruluk/süre/peak RSS/araç ve model çağrıları.
+  Hazırlık: sabit Jcode release doğrulandı, 20 koşuluk suite hazır; 5 Python
+  rapor doğrulama testi geçti. Canlı koşular OpenAI girişi bekliyor; tamamlanmadı.
+  [Deney protokolü ve devam adımları](docs/COMPARISON.md).
 
 Kabul: tekrar üretilebilir yerel rapor; model başarımı, araçlar ve çalışma zamanı
 maliyeti ayrı ölçülür. Gizli içerik telemetriye taşınmaz.
