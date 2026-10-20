@@ -254,7 +254,12 @@ Anahtarın varlığı servis/model erişimini kanıtlamaz.
   Önceki 92 provider/telemetry/Pal regresyonu geçti. Frontend tools/state patch/
   kalıcı interrupts-resume ve browser CORS uygulanmadı.
   [Kullanım, kabul ve sınırlar](docs/AG-UI.md).
-- **7.3** — Deterministik eval görevleri, dosya/test oraklları ve başarısızlık sınıfları.
+- **7.3 — tamam (deterministik eval kapsamı)** — Beş görevlik algoritma/bugfix/
+  refactor seti; bağımsız typed dosya/test kapıları, agent/incorrect/oracle-error
+  ayrımı, null ölçüm ve private checker logları; rapor v2 ve orakl hash'leri.
+  13 yeni Rust testi, toplam 651; 9 release CLI kabul grubu, fmt/Clippy/release.
+  LLM judge/trajectory/fuzzy skor ve upstream deney API'si taşınmadı.
+  [Kullanım, rapor geçişi ve sınırlar](docs/EVALS.md).
 - **7.4** — Jcode/Namzu karşılaştırması: aynı model/görev/izin/300 saniye bütçe,
 sıralı koşum, tekrarlar; doğruluk/süre/peak RSS/araç ve model çağrıları.
 
@@ -277,7 +282,10 @@ commit, GitHub push ve uzak commit kontrolü. Gönderilemeyen aşama açıkça
 bildirilir. Büyük parçalar çalışır ara teslimlere bölünür; ana modül erken
 tamamlandı sayılmaz. Her teslimden sonra aynı depoya yükleme talimatı kalıcıdır.
 
-**Sıradaki iş: 7.3 — deterministik eval görevleri ve başarısızlık sınıfları.**
+**Sıradaki iş: 7.4 — eşit koşullarda Namzu/Jcode karşılaştırma deneyleri.**
+7.3 tamamlandı: beş sabit görev, davranış ve protected-file oraklları, typed hata
+sınıfları ve eksik ölçümün doğruluk hatasından ayrılması; tekrar üretilebilir yerel
+fixture kabulü. [Kapsam ve upstream farkları](docs/EVALS.md). Canlı model çağrısı 0.
 7.2 tamamlandı: yerel authenticated POST/SSE, native event eşlemesi, aynı session'da
 turn devamı, tek kullanımlık izin ve iptal; resmî Node HttpAgent ile metin ve araç
 lifecycle kabulü. Desteklenen alt küme ve upstream farkları [AG-UI belgesinde](docs/AG-UI.md).

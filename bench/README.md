@@ -1,7 +1,9 @@
-# 0.5 — deterministik benchmark
+# 0.5 / 7.3 — deterministik benchmark ve eval
 
 Bu araç kayıp eski test_bench.py/bench.py dosyalarının kurtarılmış kopyası değildir.
 Yeni, sürümlü JSON sözleşmesi olan native Rust benchmark koşucusudur.
+7.3 ile beş görevlik eval seti, typed gate sonuçları ve ayrı orakl hataları eklendi;
+[komutlar, rapor v2 geçişi ve kabul](../docs/EVALS.md).
 
 ## Çalışma biçimi
 
@@ -11,7 +13,7 @@ Yeni, sürümlü JSON sözleşmesi olan native Rust benchmark koşucusudur.
 - Tekrarlarda ajan sırası tersine çevrilir. Paralel koşum yoktur.
 - Başarı bağımsız expected_files ve/veya test komutu ile ölçülür. “done” yazısı,
   exit 0 veya ajanın kendi test sonucu tek başına başarı sayılmaz.
-- Agent error, timeout, output_limit ve incorrect ayrı raporlanır. Hata exit'i,
+- Agent error, timeout, output_limit, incorrect ve oracle_error ayrı raporlanır. Hata exit'i,
   dosya doğru olsa bile ajan başarısı sayılmaz.
 - Prompt/girdi/executable SHA-256, elapsed_ms, exit code ve uygun olduğunda
   provider/tool çağrı sayıları kaydedilir. Model token/ücret alanları henüz yok;
@@ -101,11 +103,15 @@ Program argv ile doğrudan başlatılır; prompt shell'e birleştirilmez. Tek ge
 yer tutucular: `{prompt}`, `{workspace}`, `{state_dir}`, `{model}`, `{task}`,
 `{run_id}`. Prompt içindeki yer tutucular yeniden yorumlanmaz.
 
-Task: `id`, `prompt`, `files`, `expected_files`, `check`. En az bir bağımsız oracle
+Task: `id`, `prompt`, `files`, `expected_files`, `check`; isteğe bağlı
+`check_timeout_seconds` (1–30, varsayılan 30), `check_output_limit` (1–32768,
+varsayılan 32768). En az bir bağımsız oracle
 gerekir. `check` argv'sinde `{suite_dir}` ve `{workspace}` desteklenir. Check
 programı modelden bağımsız host seçimidir; kendi 30 saniye/32 KiB bütçesi vardır.
 Başlangıç dosyaları relative olmalı; mutlak/parent traversal reddedilir.
 
+Report sürümü **2**; suite sürümü **1** kalır. `oracle_passed` ölçüm
+alınamadığında null olur. Ayrıntılı kapılar `oracle` alanındadır.
 Report: `version`, `mode`, `model`, `timeout_seconds`, `sequential`,
 `suite_sha256`, `memory_scope`, `runs`, `summary`, `output_directory`.
 Her koşunun status/oracle_passed/exit_code/elapsed_ms/peak_rss_kib ve hash'leri var.
@@ -114,7 +120,7 @@ uyumsuz ajan çıktılarında null olabilir. Seçilen executable bir launcher is
 program_sha256 yalnızca o launcher'ı tanımlar, tüm bağımlı dosyaları tanımlamaz.
 
 Koşucu bitirip rapor ürettiyse CLI exit 0 döner; görevlerin başarısını runs/status
-ve summary üzerinden değerlendir. Suite/runtime hatası exit 1'dir. Run progress
+ve summary üzerinden değerlendir. Geçersiz suite/kayıt hatası exit 1'dir; süreç hataları koşu satırında raporlanır. Run progress
 stderr, sonuç JSON stdout'tur. Rapor her tamamlanan koşudan sonra atomik kaydedilir.
 İptalde yeni koşu başlamaz; önceki tamamlanan satırlar korunur.
 

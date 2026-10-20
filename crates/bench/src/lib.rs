@@ -1,8 +1,10 @@
 //! Sequential, isolated-workspace benchmark with independent correctness oracles.
 //! Workspaces are directories, not an OS sandbox. Only run trusted agent/test code.
+pub mod oracle;
 use namzu_core::{AgentError, Cancellation, TurnContext};
 use namzu_session::{PrivateStore, new_id, now_ms};
-use namzu_tools::process::{ProcessSpec, run_process};
+use namzu_tools::process::{ProcessOutput, ProcessSpec, run_process};
+pub use oracle::{CheckOutcome, FileOutcome, OracleResult, RunStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -33,6 +35,10 @@ pub struct Task {
     pub expected_files: BTreeMap<String, String>,
     #[serde(default)]
     pub check: Vec<String>,
+    #[serde(default = "check_timeout")]
+    pub check_timeout_seconds: u64,
+    #[serde(default = "check_output_limit")]
+    pub check_output_limit: usize,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -46,6 +52,12 @@ pub struct Suite {
     pub repeats: usize,
     pub agents: Vec<Agent>,
     pub tasks: Vec<Task>,
+}
+fn check_timeout() -> u64 {
+    30
+}
+fn check_output_limit() -> usize {
+    32768
 }
 fn timeout() -> u64 {
     300
@@ -62,6 +74,7 @@ fn valid_id(id: &str) -> bool {
 }
 fn safe_relative(path: &str) -> bool {
     !path.is_empty()
+        && !path.contains('\0')
         && path.len() <= 4096
         && Path::new(path)
             .components()
@@ -168,7 +181,10 @@ impl Suite {
             if !valid_id(&agent.name)
                 || !names.insert(&agent.name)
                 || agent.args.len() > 128
-                || agent.args.iter().any(|s| s.len() > 65536)
+                || agent
+                    .args
+                    .iter()
+                    .any(|s| s.len() > 65536 || s.contains('\0'))
                 || agent.permission_profile != self.agents[0].permission_profile
                 || agent.permission_profile.is_empty()
                 || agent.inherit_env.len() > 64
@@ -204,6 +220,18 @@ impl Suite {
                     .iter()
                     .any(|(path, value)| !safe_relative(path) || value.len() > 65536)
                 || task.check.len() > 128
+                || task
+                    .check
+                    .iter()
+                    .any(|arg| arg.len() > 65536 || arg.contains('\0'))
+                || task.check.first().is_some_and(String::is_empty)
+                || !(1..=30).contains(&task.check_timeout_seconds)
+                || !(1..=32768).contains(&task.check_output_limit)
+                || task.files.keys().any(|path| {
+                    task.files
+                        .keys()
+                        .any(|other| other != path && Path::new(other).starts_with(path))
+                })
             {
                 return Err(AgentError::Configuration(
                     "invalid task paths, inputs or oracle",
@@ -273,60 +301,6 @@ fn env(extra: &[String]) -> BTreeMap<String, String> {
     values
 }
 
-fn oracle(task: &Task, workspace: &Path, cancellation: Cancellation) -> Result<bool, AgentError> {
-    let root = cap_std::fs::Dir::open_ambient_dir(workspace, cap_std::ambient_authority())
-        .map_err(|_| AgentError::State("cannot open oracle workspace"))?;
-    let mut passed = true;
-    for (name, expected) in &task.expected_files {
-        let metadata = match root.symlink_metadata(name) {
-            Ok(meta) => meta,
-            Err(_) => {
-                passed = false;
-                continue;
-            }
-        };
-        if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 65536 {
-            passed = false;
-            continue;
-        }
-        let file = match root.open(name) {
-            Ok(file) => file,
-            Err(_) => {
-                passed = false;
-                continue;
-            }
-        };
-        let mut bytes = vec![];
-        file.take(65537)
-            .read_to_end(&mut bytes)
-            .map_err(|_| AgentError::State("cannot read oracle file"))?;
-        if bytes != expected.as_bytes() {
-            passed = false;
-        }
-    }
-    if let Some(program) = task.check.first() {
-        let args = task
-            .check
-            .iter()
-            .skip(1)
-            .map(|arg| arg.replace("{workspace}", &workspace.to_string_lossy()))
-            .collect();
-        let result = run_process(
-            ProcessSpec {
-                program: executable(Path::new(program))?,
-                args,
-                cwd: workspace.into(),
-                env: env(&[]),
-                timeout: Duration::from_secs(30),
-                output_limit: 32768,
-            },
-            &TurnContext::new(Duration::from_secs(35), cancellation)?,
-        )?;
-        passed &= result.status == "exited" && result.exit_code == Some(0);
-    }
-    Ok(passed)
-}
-
 pub fn run(
     suite: &Suite,
     output_parent: &Path,
@@ -334,6 +308,18 @@ pub fn run(
     mut progress: impl FnMut(&Value),
 ) -> Result<Value, AgentError> {
     suite.validate()?;
+    if cancellation.is_cancelled() {
+        return Err(AgentError::Cancelled);
+    }
+    // Resolve every checker before any agent effect, including direct SDK use.
+    let mut tasks = suite.tasks.clone();
+    for task in &mut tasks {
+        if let Some(program) = task.check.first_mut() {
+            *program = executable(Path::new(program))?
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
     // Resolve commands before creating agent-controlled workspaces.
     let programs = suite
         .agents
@@ -351,10 +337,13 @@ pub fn run(
         .collect::<Result<Vec<_>, _>>()?;
     let mut rows = vec![];
     let mut execution_index = 0;
-    let mut report = json!({"version":1,"mode":suite.mode,"model":suite.model,"timeout_seconds":suite.timeout_seconds,"sequential":true,"started_ms":now_ms(),"suite_sha256":hash(&serde_json::to_vec(suite).map_err(|_|AgentError::Protocol("cannot hash suite"))?),"memory_scope":"wait4 ru_maxrss: largest individual process including waited children; not aggregate tree RSS/PSS","permission_profile_is_declared":true,"runs":[]});
+    let mut report = json!({"version":2,"status":"running","planned_runs":suite.repeats * suite.tasks.len() * suite.agents.len(),"mode":suite.mode,"model":suite.model,"timeout_seconds":suite.timeout_seconds,"sequential":true,"started_ms":now_ms(),"suite_sha256":hash(&serde_json::to_vec(suite).map_err(|_|AgentError::Protocol("cannot hash suite"))?),"memory_scope":"wait4 ru_maxrss: largest individual process including waited children; not aggregate tree RSS/PSS","permission_profile_is_declared":true,"runs":[]});
     store.write("report.json", &report)?;
     for repeat in 0..suite.repeats {
-        for task in &suite.tasks {
+        for task in &tasks {
+            if cancellation.is_cancelled() {
+                return Err(AgentError::Cancelled);
+            }
             // Alternate the serial ordering across repeats to reduce order bias.
             let order: Vec<_> = if repeat % 2 == 0 {
                 (0..suite.agents.len()).collect()
@@ -362,6 +351,9 @@ pub fn run(
                 (0..suite.agents.len()).rev().collect()
             };
             for agent_index in order {
+                if cancellation.is_cancelled() {
+                    return Err(AgentError::Cancelled);
+                }
                 let agent = &suite.agents[agent_index];
                 let run_id = format!("run-{execution_index}");
                 execution_index += 1;
@@ -384,7 +376,7 @@ pub fn run(
                     .map(|arg| expand(arg, &workspace, &state, task, suite, &run_id))
                     .collect();
                 let started = Instant::now();
-                let result = run_process(
+                let result = match run_process(
                     ProcessSpec {
                         program: programs[agent_index].clone(),
                         args,
@@ -397,26 +389,29 @@ pub fn run(
                         Duration::from_secs(suite.timeout_seconds + 5),
                         cancellation.clone(),
                     )?,
-                )?;
-                let elapsed_ms = started.elapsed().as_millis();
-                let oracle_passed = oracle(task, &workspace, cancellation.clone())?;
-                let status = if result.status != "exited" {
-                    result.status.as_str()
-                } else if result.exit_code != Some(0) {
-                    "agent_error"
-                } else if oracle_passed {
-                    "passed"
-                } else {
-                    "incorrect"
+                ) {
+                    Ok(result) => result,
+                    Err(AgentError::Cancelled) => return Err(AgentError::Cancelled),
+                    Err(_) => ProcessOutput {
+                        status: "error".into(),
+                        exit_code: None,
+                        stdout: String::new(),
+                        stderr: "process supervision failed".into(),
+                        peak_rss_kib: None,
+                    },
                 };
+                let elapsed_ms = started.elapsed().as_millis();
+                let (oracle, oracle_logs) =
+                    oracle::evaluate(task, &workspace, cancellation.clone())?;
+                let status = oracle::classify(&result.status, result.exit_code, &oracle);
                 let stats = serde_json::from_str::<Value>(result.stdout.trim())
                     .ok()
                     .and_then(|value|value.get("stats").cloned()).map(|value|json!({"provider_calls":value["provider_calls"].as_u64(),"tool_calls":value["tool_calls"].as_u64()}));
-                let row = json!({"run_id":run_id,"execution_index":execution_index-1,"agent":agent.name,"task":task.id,"repeat":repeat,"status":status,"oracle_passed":oracle_passed,"exit_code":result.exit_code,"elapsed_ms":elapsed_ms,"peak_rss_kib":result.peak_rss_kib,"stats":stats,"prompt_sha256":hash(task.prompt.as_bytes()),"input_sha256":hash(&serde_json::to_vec(&task.files).map_err(|_|AgentError::Protocol("cannot hash inputs"))?),"program_sha256":program_hashes[agent_index],"permission_profile":agent.permission_profile});
+                let row = json!({"run_id":run_id,"execution_index":execution_index-1,"agent":agent.name,"task":task.id,"repeat":repeat,"status":status,"execution_status":result.status,"oracle_passed":oracle.passed,"oracle":oracle,"oracle_sha256":hash(&serde_json::to_vec(&(task.expected_files.clone(),task.check.clone(),task.check_timeout_seconds,task.check_output_limit)).map_err(|_|AgentError::Protocol("cannot hash oracle"))?),"exit_code":result.exit_code,"elapsed_ms":elapsed_ms,"peak_rss_kib":result.peak_rss_kib,"stats":stats,"prompt_sha256":hash(task.prompt.as_bytes()),"input_sha256":hash(&serde_json::to_vec(&task.files).map_err(|_|AgentError::Protocol("cannot hash inputs"))?),"program_sha256":program_hashes[agent_index],"permission_profile":agent.permission_profile});
                 // Raw output stays in private ignored artifacts, never in the public report.
                 store.write(
                     &format!("{run_id}.log.json"),
-                    &json!({"stdout":result.stdout,"stderr":result.stderr}),
+                    &json!({"stdout":result.stdout,"stderr":result.stderr,"oracle":oracle_logs}),
                 )?;
                 rows.push(row.clone());
                 report["runs"] = json!(rows);
@@ -425,12 +420,16 @@ pub fn run(
             }
         }
     }
+    report["status"] = json!("complete");
     report["finished_ms"] = json!(now_ms());
     report["output_directory"] = json!(directory);
-    report["summary"]=json!(suite.agents.iter().map(|agent|{let runs=rows.iter().filter(|row|row["agent"]==agent.name).collect::<Vec<_>>();json!({"agent":agent.name,"passed":runs.iter().filter(|row|row["status"]=="passed").count(),"total":runs.len()})}).collect::<Vec<_>>());
+    report["summary"]=json!(suite.agents.iter().map(|agent|{let runs=rows.iter().filter(|row|row["agent"]==agent.name).collect::<Vec<_>>();json!({"agent":agent.name,"passed":runs.iter().filter(|row|row["status"]=="passed").count(),"total":runs.len(),"incorrect":runs.iter().filter(|row|row["status"]=="incorrect").count(),"oracle_errors":runs.iter().filter(|row|row["status"]=="oracle_error").count(),"execution_errors":runs.iter().filter(|row|["agent_error","timeout","output_limit"].iter().any(|status|row["status"]==*status)).count()})}).collect::<Vec<_>>());
     store.write("report.json", &report)?;
     Ok(report)
 }
+
+/// The suite hash pins prompts, inputs and embedded checker sources; no inference.
+pub const BUILTIN_TASKS: &[&str] = &["slug", "intervals", "toposort", "ledger", "refactor"];
 
 pub fn builtin_task(id: &str) -> Result<Task, AgentError> {
     let (prompt, check) = match id {
@@ -446,19 +445,44 @@ pub fn builtin_task(id: &str) -> Result<Task, AgentError> {
             "Implement solution.py plan(nodes, edges). Node names are strings, duplicate nodes/edges are ignored. Edges (a,b) mean a must precede b. Always choose the lexicographically smallest currently available node. Reject unknown edge nodes and cycles with ValueError. Do not mutate inputs. Return list of nodes. Use only Python standard library.",
             include_str!("../../../bench/oracles/toposort.py"),
         ),
+        "ledger" => (
+            "Fix solution.py ledger(rows). Each row is (id, account, amount). Validate EVERY row, including duplicates: exact str id/account and exact int amount (bool/float forbidden), otherwise TypeError. For repeated ids keep only the FIRST row, even across accounts. Sum signed amounts by account; retain zero totals. Return a dict with account keys inserted in sorted order. Do not mutate rows. Standard library only.",
+            include_str!("../../../bench/oracles/ledger.py"),
+        ),
+        "refactor" => (
+            "Refactor solution.py normalize_many(texts) to remove duplicated normalization logic by delegating to legacy.normalize once per input element, in order, including duplicates. Keep legacy.py byte-for-byte unchanged. Preserve list output, Unicode behavior, TypeError, input immutability and generator support. Standard library only.",
+            include_str!("../../../bench/oracles/refactor.py"),
+        ),
         _ => return Err(AgentError::Configuration("unknown built-in benchmark task")),
     };
+    let mut files = BTreeMap::from([
+        (
+            "solution.py".into(),
+            "# Implement the requested function here.\n".into(),
+        ),
+        ("README.md".into(), prompt.into()),
+    ]);
+    let mut expected_files = BTreeMap::new();
+    if id == "ledger" {
+        files.insert(
+            "solution.py".into(),
+            "def ledger(rows):\n    return {account: amount for _, account, amount in rows}\n"
+                .into(),
+        );
+    }
+    if id == "refactor" {
+        let legacy = include_str!("../../../bench/fixtures/legacy.py").to_owned();
+        files.insert("legacy.py".into(), legacy.clone());
+        expected_files.insert("legacy.py".into(), legacy);
+        files.insert("solution.py".into(), "def normalize_many(texts):\n    return [\" \".join(text.strip().lower().split()) for text in texts]\n".into());
+    }
     Ok(Task {
         id: id.into(),
         prompt: prompt.into(),
-        files: BTreeMap::from([
-            (
-                "solution.py".into(),
-                "# Implement the requested function here.\n".into(),
-            ),
-            ("README.md".into(), prompt.into()),
-        ]),
-        expected_files: BTreeMap::new(),
+        files,
+        expected_files,
+        check_timeout_seconds: check_timeout(),
+        check_output_limit: check_output_limit(),
         check: vec![
             executable(Path::new("python3"))?
                 .to_string_lossy()
@@ -474,6 +498,8 @@ pub fn fixture_solution(id: &str) -> Result<&'static str, AgentError> {
         "slug" => Ok(include_str!("../../../bench/fixtures/slug.py")),
         "intervals" => Ok(include_str!("../../../bench/fixtures/intervals.py")),
         "toposort" => Ok(include_str!("../../../bench/fixtures/toposort.py")),
+        "ledger" => Ok(include_str!("../../../bench/fixtures/ledger.py")),
+        "refactor" => Ok(include_str!("../../../bench/fixtures/refactor.py")),
         _ => Err(AgentError::Configuration("unknown fixture task")),
     }
 }

@@ -1,4 +1,4 @@
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use namzu_bench::{Agent, Suite};
 use namzu_core::{
     AgentError, Cancellation, Completion, Limits, ScriptedProvider, ToolCall, run_turn,
@@ -8,6 +8,20 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum TaskSet {
+    Algorithms,
+    Eval,
+}
+impl TaskSet {
+    fn ids(self) -> &'static [&'static str] {
+        match self {
+            Self::Algorithms => &namzu_bench::BUILTIN_TASKS[..3],
+            Self::Eval => namzu_bench::BUILTIN_TASKS,
+        }
+    }
+}
 
 #[derive(Subcommand)]
 pub enum BenchAction {
@@ -19,13 +33,17 @@ pub enum BenchAction {
         #[arg(long, default_value = "artifacts/bench")]
         out: PathBuf,
     },
-    /// Offline plumbing test: known fixture writer vs a deliberately incorrect no-op.
+    /// Offline gates: known fixture writer vs a deliberately incorrect no-op.
     Demo {
+        #[arg(long, value_enum, default_value = "algorithms")]
+        task_set: TaskSet,
         #[arg(long, default_value = "artifacts/bench")]
         out: PathBuf,
     },
-    /// Write a three-task live Namzu/Jcode suite; no model calls.
+    /// Write a live Namzu/Jcode suite; no model calls.
     Init {
+        #[arg(long, value_enum, default_value = "algorithms")]
+        task_set: TaskSet,
         #[arg(long)]
         model: String,
         #[arg(long, default_value = "jcode")]
@@ -90,7 +108,7 @@ pub fn run(action: BenchAction, cancellation: Cancellation) -> Result<(), AgentE
             })?;
             println!("{report}");
         }
-        BenchAction::Demo { out } => {
+        BenchAction::Demo { out, task_set } => {
             let program = std::env::current_exe()
                 .map_err(|_| AgentError::Configuration("cannot resolve current binary"))?;
             let args = vec![
@@ -123,15 +141,22 @@ pub fn run(action: BenchAction, cancellation: Cancellation) -> Result<(), AgentE
                         inherit_env: vec![],
                     },
                 ],
-                tasks: ["slug", "intervals", "toposort"]
-                    .into_iter()
+                tasks: task_set
+                    .ids()
+                    .iter()
+                    .copied()
                     .map(namzu_bench::builtin_task)
                     .collect::<Result<_, _>>()?,
             };
             let report = namzu_bench::run(&suite, &out, cancellation, |_| {})?;
             println!("{report}");
         }
-        BenchAction::Init { model, jcode, file } => {
+        BenchAction::Init {
+            model,
+            jcode,
+            file,
+            task_set,
+        } => {
             if file.exists() {
                 return Err(AgentError::Configuration("suite file already exists"));
             }
@@ -196,8 +221,10 @@ pub fn run(action: BenchAction, cancellation: Cancellation) -> Result<(), AgentE
                         inherit_env: vec!["JCODE_HOME".into(), "JCODE_OPENAI_TRANSPORT".into()],
                     },
                 ],
-                tasks: ["slug", "intervals", "toposort"]
-                    .into_iter()
+                tasks: task_set
+                    .ids()
+                    .iter()
+                    .copied()
                     .map(namzu_bench::builtin_task)
                     .collect::<Result<_, _>>()?,
             };

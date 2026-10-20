@@ -97,7 +97,9 @@ sınar. CLI bu SDK'yi kullanır; çekirdek CLI'ye bağımlı değildir.
   [kullanım, gizlilik ve kalıcılık sınırları](docs/TELEMETRY.md).
   7.2 AG-UI SDK, kimlikli loopback POST/SSE, canlı onay/iptal ve istemci entegrasyonu
   eklendi; [kullanım ve desteklenen alt küme](docs/AG-UI.md).
-  Sırada deterministik eval 7.3 var.
+  7.3 deterministik eval: beş görev, bağımsız typed dosya/test kapıları,
+  yanlış çözüm ile ölçüm hatası ayrımı ve rapor v2; [kullanım ve sınırlar](docs/EVALS.md).
+  Sırada 7.4 karşılaştırma koşulları ve gerçek Namzu/Jcode deneyleri var.
 
 ## 0.3 — özel durum ve oturum devamı
 
